@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
-import { DEFAULT_SETTINGS, MIN_INTERVAL_MINUTES } from "../../../core/constants";
+import { DEFAULT_SETTINGS } from "../../../core/constants";
 import { hydrateStorage, persistOnboarding, persistProgress, persistSettings } from "../../../core/storage/migrations";
 import { getDateKey } from "../../../core/time";
 import { HydrationProgress, HydrationSettings, OnboardingState } from "../domain/types";
@@ -49,8 +49,6 @@ const reducer = (state: HydrationState, action: HydrationAction): HydrationState
   }
 };
 
-const clampInterval = (value: number) => Math.max(MIN_INTERVAL_MINUTES, value);
-
 export const HydrationProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
 
@@ -70,10 +68,6 @@ export const HydrationProvider = ({ children }: { children: React.ReactNode }) =
       const next: HydrationSettings = {
         ...state.settings,
         ...patch,
-        intervalMinutes:
-          patch.intervalMinutes !== undefined
-            ? clampInterval(patch.intervalMinutes)
-            : clampInterval(state.settings.intervalMinutes),
       };
       dispatch({ type: "setSettings", payload: next });
       await persistSettings(next);

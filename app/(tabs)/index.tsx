@@ -53,7 +53,9 @@ export default function HomeScreen() {
 
         <Card>
           <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-            Next sip: ~{plan.mlPerReminder} ml ({plan.sipsPerReminder} sips)
+            {plan.targetMet
+              ? "Next sip: target met for today"
+              : `Next sip: ~${plan.mlPerReminder} ml (${plan.sipsPerReminder} sips)`}
           </Text>
           <Text style={[styles.label, { color: theme.colors.textSecondary, marginTop: 6 }]}>
             Next reminder at {plan.nextReminderAt ? formatTimeForDisplay(plan.nextReminderAt) : "not scheduled"}

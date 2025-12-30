@@ -9,18 +9,21 @@ import {
 } from "../src/features/hydration/state/hydrationStore";
 import {
   configureNotificationChannels,
+  configureNotificationActions,
   rescheduleNotifications,
 } from "../src/features/hydration/notifications/notifier";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
+import { NOTIFICATION_ACTION_LOG } from "../src/core/constants";
 
 const RootLayoutNav = () => {
   const router = useRouter();
   const segments = useSegments();
-  const { settings, onboarding, hydrated, refreshProgressDate } =
+  const { settings, onboarding, hydrated, refreshProgressDate, progress, addConsumed } =
     useHydration();
 
   useEffect(() => {
     void configureNotificationChannels();
+    void configureNotificationActions();
   }, []);
 
   useEffect(() => {
@@ -53,13 +56,31 @@ const RootLayoutNav = () => {
     if (!hydrated || !onboarding.completed) {
       return;
     }
-    void rescheduleNotifications(settings);
-  }, [hydrated, onboarding.completed, settings]);
+    void rescheduleNotifications(settings, progress.consumedMl);
+  }, [hydrated, onboarding.completed, settings, progress.consumedMl]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (response.actionIdentifier !== NOTIFICATION_ACTION_LOG) {
+        return;
+      }
+      const payload = response.notification.request.content.data?.ml;
+      const amount =
+        typeof payload === "number"
+          ? payload
+          : Number.parseInt(typeof payload === "string" ? payload : "", 10);
+      if (Number.isFinite(amount) && amount > 0) {
+        void addConsumed(amount);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [addConsumed]);
 
   useAppForeground(() => {
     refreshProgressDate();
     if (hydrated && onboarding.completed) {
-      void rescheduleNotifications(settings);
+      void rescheduleNotifications(settings, progress.consumedMl);
     }
   });
 

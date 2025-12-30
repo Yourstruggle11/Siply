@@ -1,8 +1,13 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { APP_NAME, MAX_NOTIFICATIONS_PER_DAY, NUDGE_MINUTES } from "../../../core/constants";
+import {
+  APP_NAME,
+  MAX_NOTIFICATIONS_PER_DAY,
+  NOTIFICATION_ACTION_LOG,
+  NOTIFICATION_CATEGORY_ID,
+  NUDGE_MINUTES,
+} from "../../../core/constants";
 import { addMinutes } from "../../../core/time";
-import { computeMlPerReminder, computeSipsPerReminder } from "../domain/calculations";
 import { computeReminderSchedule } from "../domain/schedule";
 import { HydrationSettings } from "../domain/types";
 
@@ -16,7 +21,7 @@ const formatFinalNudgeBody = (ml: number) => `Still time for ~${ml} ml`;
 const getChannelId = (soundEnabled: boolean) =>
   soundEnabled ? ANDROID_CHANNEL_SOUND : ANDROID_CHANNEL_SILENT;
 
-const buildContent = (body: string, soundEnabled: boolean) => ({
+const buildContent = (body: string, soundEnabled: boolean, data?: Record<string, unknown>) => ({
   title: APP_NAME,
   body,
   sound: soundEnabled ? "default" : undefined,
@@ -24,6 +29,8 @@ const buildContent = (body: string, soundEnabled: boolean) => ({
     ? Notifications.AndroidNotificationPriority.MAX
     : Notifications.AndroidNotificationPriority.DEFAULT,
   vibrate: soundEnabled ? [0, 250, 250, 250] : undefined,
+  categoryIdentifier: NOTIFICATION_CATEGORY_ID,
+  data,
 });
 
 export const configureNotificationChannels = async () => {
@@ -56,30 +63,45 @@ export const configureNotificationChannels = async () => {
   });
 };
 
+export const configureNotificationActions = async () => {
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORY_ID, [
+    {
+      identifier: NOTIFICATION_ACTION_LOG,
+      buttonTitle: "I drank",
+      options: {
+        opensAppToForeground: false,
+      },
+    },
+  ]);
+};
+
 export const cancelAllNotifications = async () => {
   await Notifications.cancelAllScheduledNotificationsAsync();
 };
 
-export const scheduleNotifications = async (settings: HydrationSettings, now = new Date()) => {
-  const schedule = computeReminderSchedule(now, settings);
-  const mlPerReminder = computeMlPerReminder(settings);
-  const sipsPerReminder = computeSipsPerReminder(settings);
+export const scheduleNotifications = async (
+  settings: HydrationSettings,
+  consumedMl: number,
+  now = new Date()
+) => {
+  const schedule = computeReminderSchedule(now, settings, consumedMl);
   const channelId = getChannelId(settings.soundEnabled);
   const factor = settings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
   const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
-  const baseSchedule = schedule.slice(0, maxBase);
+  const baseSchedule = schedule.slots.slice(0, maxBase);
   const horizonEnd = addMinutes(now, 24 * 60);
 
   let scheduled = 0;
-  for (const time of baseSchedule) {
+  for (const slot of baseSchedule) {
     await Notifications.scheduleNotificationAsync({
       content: buildContent(
-        formatReminderBody(mlPerReminder, sipsPerReminder),
-        settings.soundEnabled
+        formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder),
+        settings.soundEnabled,
+        { ml: slot.mlPerReminder }
       ),
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: time,
+        date: slot.time,
         channelId,
       },
     });
@@ -87,16 +109,17 @@ export const scheduleNotifications = async (settings: HydrationSettings, now = n
 
     if (settings.escalationEnabled) {
       for (const offset of NUDGE_MINUTES) {
-        const nudgeTime = addMinutes(time, offset);
+        const nudgeTime = addMinutes(slot.time, offset);
         if (nudgeTime > horizonEnd) {
           continue;
         }
         await Notifications.scheduleNotificationAsync({
           content: buildContent(
             offset === NUDGE_MINUTES[0]
-              ? formatNudgeBody(mlPerReminder, sipsPerReminder)
-              : formatFinalNudgeBody(mlPerReminder),
-            settings.soundEnabled
+              ? formatNudgeBody(slot.mlPerReminder, slot.sipsPerReminder)
+              : formatFinalNudgeBody(slot.mlPerReminder),
+            settings.soundEnabled,
+            { ml: slot.mlPerReminder }
           ),
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -112,18 +135,25 @@ export const scheduleNotifications = async (settings: HydrationSettings, now = n
   return scheduled;
 };
 
-export const rescheduleNotifications = async (settings: HydrationSettings, now = new Date()) => {
+export const rescheduleNotifications = async (
+  settings: HydrationSettings,
+  consumedMl: number,
+  now = new Date()
+) => {
   await configureNotificationChannels();
+  await configureNotificationActions();
   await cancelAllNotifications();
-  return scheduleNotifications(settings, now);
+  return scheduleNotifications(settings, consumedMl, now);
 };
 
 export const sendTestNotification = async () => {
   const channelId = getChannelId(true);
   await Notifications.scheduleNotificationAsync({
     content: {
-      ...buildContent("Test reminder: Drink 200 ml (13 sips)", true),
-      data: { forceSound: true },
+      ...buildContent("Test reminder: Drink 200 ml (13 sips)", true, {
+        forceSound: true,
+        ml: 200,
+      }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,

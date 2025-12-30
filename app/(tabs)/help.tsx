@@ -10,19 +10,82 @@ export default function HelpScreen() {
     <Screen scroll>
       <View style={styles.container}>
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Help</Text>
-        <Card>
-          <Text style={[styles.body, { color: theme.colors.textPrimary }]}>
-            Notifications cannot override Silent mode or Do Not Disturb.
-          </Text>
-          <Text style={[styles.body, { color: theme.colors.textPrimary, marginTop: 10 }]}>
-            If you want sound, keep ringer on and volume up.
-          </Text>
-          <Text style={[styles.body, { color: theme.colors.textPrimary, marginTop: 10 }]}>
-            When nudges are on, Siply sends two follow-up reminders at +5 and +10 minutes.
-          </Text>
-          <Text style={[styles.body, { color: theme.colors.textPrimary, marginTop: 10 }]}>
-            Android tip: check app notification settings and battery optimization.
-          </Text>
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Notifications</Text>
+          <View style={styles.list}>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Notifications cannot override Silent mode or Do Not Disturb.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                If you want sound, keep ringer on and volume up.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                When nudges are on, Siply sends two follow-up reminders at +5 and +10 minutes.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Use the “I drank” action on a reminder to log without opening the app.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Android tip: check app notification settings and battery optimization.
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Active window</Text>
+          <View style={styles.list}>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                End time can be after midnight, for example 07:00 to 01:00.
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        <Card style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Action buttons</Text>
+          <View style={styles.list}>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Reschedule notifications: rebuilds the next 24 hours of reminders.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Cancel all notifications: stops all scheduled reminders.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Test notification (sound): sends a sample reminder to check volume and vibration.
+              </Text>
+            </View>
+            <View style={styles.listItem}>
+              <Text style={[styles.bullet, { color: theme.colors.textSecondary }]}>•</Text>
+              <Text style={[styles.listText, { color: theme.colors.textPrimary }]}>
+                Reset today’s progress: clears today’s consumed amount.
+              </Text>
+            </View>
+          </View>
         </Card>
       </View>
     </Screen>
@@ -38,8 +101,28 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "600",
   },
-  body: {
+  section: {
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  list: {
+    gap: 10,
+  },
+  listItem: {
+    flexDirection: "row",
+  },
+  bullet: {
+    width: 16,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  listText: {
+    flex: 1,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 21,
   },
 });

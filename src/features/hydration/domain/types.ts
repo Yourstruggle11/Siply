@@ -2,7 +2,6 @@ export type HydrationSettings = {
   targetLiters: number;
   windowStart: string;
   windowEnd: string;
-  intervalMinutes: number;
   sipMl: number;
   escalationEnabled: boolean;
   soundEnabled: boolean;
@@ -24,4 +23,5 @@ export type HydrationPlan = {
   mlPerReminder: number;
   sipsPerReminder: number;
   nextReminderAt: Date | null;
+  targetMet: boolean;
 };

@@ -12,9 +12,11 @@ drink water, on time.
 
 ## Notification strategy
 - Local notifications are scheduled in a rolling 24 hour window within the active hours.
-- On app launch, settings changes, and when returning to foreground, existing schedules are canceled and rebuilt.
+- On app launch, settings changes, progress updates, and when returning to foreground, existing schedules are canceled and rebuilt.
+- Reminder spacing is computed automatically based on remaining target and remaining window time.
 - Optional nudges are scheduled at +5 and +10 minutes for each reminder when enabled.
 - Sound is enabled per notification when the setting is on; silent or DND may still mute.
+- Notifications include an “I drank” action to log a dose without opening the app.
 
 ## Builds (shareable test builds)
 Android (APK, easiest to share):

@@ -1,37 +1,50 @@
-import { MIN_INTERVAL_MINUTES } from "../../../core/constants";
 import { parseTimeToMinutes } from "../../../core/time";
 import { HydrationSettings } from "./types";
 
-const clampNumber = (value: number, min: number) => (value < min ? min : value);
+export type AutoPlan = {
+  intervalMinutes: number;
+  reminders: number;
+  mlPerReminder: number;
+};
 
 export const litersToMl = (liters: number) => Math.round(liters * 1000);
 
 export const getWindowMinutes = (settings: HydrationSettings) => {
   const startMinutes = parseTimeToMinutes(settings.windowStart) ?? 0;
   const endMinutes = parseTimeToMinutes(settings.windowEnd) ?? 0;
-  const duration = endMinutes - startMinutes;
-  return duration > 0 ? duration : 0;
-};
-
-export const getIntervalMinutes = (settings: HydrationSettings) =>
-  clampNumber(settings.intervalMinutes, MIN_INTERVAL_MINUTES);
-
-export const computeRemindersPerDay = (settings: HydrationSettings) => {
-  const interval = getIntervalMinutes(settings);
-  const windowMinutes = getWindowMinutes(settings);
-  if (windowMinutes <= 0) {
-    return 1;
+  if (startMinutes === endMinutes) {
+    return 0;
   }
-  return Math.max(1, Math.floor(windowMinutes / interval));
+  if (endMinutes > startMinutes) {
+    return endMinutes - startMinutes;
+  }
+  return 24 * 60 - startMinutes + endMinutes;
 };
 
-export const computeMlPerReminder = (settings: HydrationSettings) => {
-  const totalMl = litersToMl(settings.targetLiters);
-  const reminders = computeRemindersPerDay(settings);
-  return Math.max(1, Math.round(totalMl / reminders));
+export const computeAutoPlan = (input: {
+  remainingMl: number;
+  windowMinutes: number;
+  minIntervalMinutes: number;
+  maxReminders: number;
+  desiredReminderMl: number;
+}): AutoPlan | null => {
+  const { remainingMl, windowMinutes, minIntervalMinutes, maxReminders, desiredReminderMl } = input;
+
+  if (remainingMl <= 0 || windowMinutes <= 0) {
+    return null;
+  }
+
+  const maxByInterval = Math.max(1, Math.floor(windowMinutes / minIntervalMinutes));
+  const allowedReminders = Math.max(1, Math.min(maxReminders, maxByInterval));
+  const desiredReminders = Math.max(1, Math.ceil(remainingMl / desiredReminderMl));
+  const initialReminders = Math.min(allowedReminders, desiredReminders);
+  const intervalMinutes = Math.max(minIntervalMinutes, Math.floor(windowMinutes / initialReminders));
+  const adjustedReminders = Math.max(1, Math.floor(windowMinutes / intervalMinutes));
+  const reminders = Math.min(allowedReminders, adjustedReminders);
+  const mlPerReminder = Math.max(1, Math.round(remainingMl / reminders));
+
+  return { intervalMinutes, reminders, mlPerReminder };
 };
 
-export const computeSipsPerReminder = (settings: HydrationSettings) => {
-  const mlPerReminder = computeMlPerReminder(settings);
-  return Math.max(1, Math.round(mlPerReminder / settings.sipMl));
-};
+export const computeSipsPerReminder = (mlPerReminder: number, sipMl: number) =>
+  Math.max(1, Math.round(mlPerReminder / sipMl));

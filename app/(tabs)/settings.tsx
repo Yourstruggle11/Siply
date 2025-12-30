@@ -7,7 +7,13 @@ import { TimeField } from "../../src/shared/components/TimeField";
 import { ToggleRow } from "../../src/shared/components/ToggleRow";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
-import { TAGLINE, MIN_INTERVAL_MINUTES } from "../../src/core/constants";
+import {
+  MAX_NOTIFICATIONS_PER_DAY,
+  MIN_INTERVAL_MINUTES,
+  NUDGE_MINUTES,
+  REMINDER_TARGET_ML,
+  TAGLINE,
+} from "../../src/core/constants";
 import { parseTimeToMinutes } from "../../src/core/time";
 import { useHydration } from "../../src/features/hydration/state/hydrationStore";
 import {
@@ -15,16 +21,21 @@ import {
   rescheduleNotifications,
   sendTestNotification,
 } from "../../src/features/hydration/notifications/notifier";
+import {
+  computeAutoPlan,
+  computeSipsPerReminder,
+  getWindowMinutes,
+  litersToMl,
+} from "../../src/features/hydration/domain/calculations";
 
 export default function SettingsScreen() {
   const theme = useTheme();
-  const { settings, updateSettings, resetToday } = useHydration();
+  const { settings, updateSettings, resetToday, progress } = useHydration();
 
   const [draft, setDraft] = useState(() => ({
     target: settings.targetLiters.toFixed(1),
     windowStart: settings.windowStart,
     windowEnd: settings.windowEnd,
-    interval: String(settings.intervalMinutes),
     sipMl: String(settings.sipMl),
     escalationEnabled: settings.escalationEnabled,
     soundEnabled: settings.soundEnabled,
@@ -36,7 +47,6 @@ export default function SettingsScreen() {
       target: settings.targetLiters.toFixed(1),
       windowStart: settings.windowStart,
       windowEnd: settings.windowEnd,
-      interval: String(settings.intervalMinutes),
       sipMl: String(settings.sipMl),
       escalationEnabled: settings.escalationEnabled,
       soundEnabled: settings.soundEnabled,
@@ -48,8 +58,10 @@ export default function SettingsScreen() {
     const parsedTarget = Number.parseFloat(draft.target);
     const startMinutes = parseTimeToMinutes(draft.windowStart);
     const endMinutes = parseTimeToMinutes(draft.windowEnd);
-    const hasValidWindow = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes;
-    const parsedInterval = Number.parseInt(draft.interval, 10);
+    const hasValidWindow =
+      startMinutes !== null &&
+      endMinutes !== null &&
+      getWindowMinutes({ ...settings, windowStart: draft.windowStart, windowEnd: draft.windowEnd }) > 0;
     const parsedSip = Number.parseInt(draft.sipMl, 10);
 
     return {
@@ -57,10 +69,6 @@ export default function SettingsScreen() {
         Number.isFinite(parsedTarget) && parsedTarget > 0 ? parsedTarget : settings.targetLiters,
       windowStart: hasValidWindow ? draft.windowStart : settings.windowStart,
       windowEnd: hasValidWindow ? draft.windowEnd : settings.windowEnd,
-      intervalMinutes:
-        Number.isFinite(parsedInterval) && parsedInterval >= MIN_INTERVAL_MINUTES
-          ? parsedInterval
-          : settings.intervalMinutes,
       sipMl: Number.isFinite(parsedSip) && parsedSip > 0 ? parsedSip : settings.sipMl,
       escalationEnabled: draft.escalationEnabled,
       soundEnabled: draft.soundEnabled,
@@ -68,12 +76,29 @@ export default function SettingsScreen() {
     };
   }, [draft, settings]);
 
+  const previewPlan = useMemo(() => {
+    const targetMl = litersToMl(normalizedSettings.targetLiters);
+    const windowMinutes = getWindowMinutes(normalizedSettings);
+    const factor = normalizedSettings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
+    const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
+    return computeAutoPlan({
+      remainingMl: targetMl,
+      windowMinutes,
+      minIntervalMinutes: MIN_INTERVAL_MINUTES,
+      maxReminders: maxBase,
+      desiredReminderMl: REMINDER_TARGET_ML,
+    });
+  }, [normalizedSettings]);
+
+  const previewMl = previewPlan?.mlPerReminder ?? REMINDER_TARGET_ML;
+  const previewSips = computeSipsPerReminder(previewMl, normalizedSettings.sipMl);
+  const previewInterval = previewPlan?.intervalMinutes ?? MIN_INTERVAL_MINUTES;
+
   const isDirty = useMemo(
     () =>
       draft.target !== settings.targetLiters.toFixed(1) ||
       draft.windowStart !== settings.windowStart ||
       draft.windowEnd !== settings.windowEnd ||
-      draft.interval !== String(settings.intervalMinutes) ||
       draft.sipMl !== String(settings.sipMl) ||
       draft.escalationEnabled !== settings.escalationEnabled ||
       draft.soundEnabled !== settings.soundEnabled ||
@@ -89,6 +114,13 @@ export default function SettingsScreen() {
     <Screen scroll>
       <View style={styles.container}>
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Settings</Text>
+
+        {isDirty ? (
+          <Card style={styles.saveBar}>
+            <Text style={[styles.saveText, { color: theme.colors.textPrimary }]}>Unsaved changes</Text>
+            <PrimaryButton label="Save changes" onPress={handleSave} />
+          </Card>
+        ) : null}
 
         <Card>
           <Text style={[styles.aboutTitle, { color: theme.colors.textPrimary }]}>Siply</Text>
@@ -107,6 +139,9 @@ export default function SettingsScreen() {
 
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Active window</Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            End time can be after midnight (example: 01:00).
+          </Text>
           <View style={styles.row}>
             <View style={styles.field}>
               <TimeField
@@ -127,15 +162,13 @@ export default function SettingsScreen() {
 
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Reminders</Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            Reminder spacing: automatic (~{previewInterval} min)
+          </Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            One reminder ~= {previewMl} ml ({previewSips} sips)
+          </Text>
           <View style={styles.row}>
-            <View style={styles.field}>
-              <Field
-                label="Interval minutes"
-                value={draft.interval}
-                onChangeText={(value) => setDraft((prev) => ({ ...prev, interval: value }))}
-                keyboardType="number-pad"
-              />
-            </View>
             <View style={styles.field}>
               <Field
                 label="Sip ml"
@@ -171,19 +204,13 @@ export default function SettingsScreen() {
           />
         </Card>
 
-        {isDirty ? (
-          <Card style={styles.section}>
-            <PrimaryButton label="Save changes" onPress={handleSave} />
-          </Card>
-        ) : null}
-
         <Card style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Actions</Text>
           <View style={styles.actionGroup}>
             <PrimaryButton
               label="Reschedule notifications"
               onPress={() => {
-                void rescheduleNotifications(settings);
+                void rescheduleNotifications(settings, progress.consumedMl);
               }}
             />
             <PrimaryButton
@@ -231,6 +258,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
+  saveBar: {
+    gap: 10,
+  },
+  saveText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
   section: {
     gap: 12,
   },
@@ -238,6 +272,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 0.6,
+  },
+  helper: {
+    fontSize: 13,
   },
   row: {
     flexDirection: "row",

@@ -8,11 +8,22 @@ import { TimeField } from "../../src/shared/components/TimeField";
 import { ToggleRow } from "../../src/shared/components/ToggleRow";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
-import { DEFAULT_SETTINGS, MIN_INTERVAL_MINUTES } from "../../src/core/constants";
+import {
+  DEFAULT_SETTINGS,
+  MAX_NOTIFICATIONS_PER_DAY,
+  MIN_INTERVAL_MINUTES,
+  NUDGE_MINUTES,
+  REMINDER_TARGET_ML,
+} from "../../src/core/constants";
 import { parseTimeToMinutes } from "../../src/core/time";
 import { useHydration } from "../../src/features/hydration/state/hydrationStore";
 import { HydrationSettings } from "../../src/features/hydration/domain/types";
-import { computeMlPerReminder, computeSipsPerReminder } from "../../src/features/hydration/domain/calculations";
+import {
+  computeAutoPlan,
+  computeSipsPerReminder,
+  getWindowMinutes,
+  litersToMl,
+} from "../../src/features/hydration/domain/calculations";
 
 export default function DefaultsScreen() {
   const router = useRouter();
@@ -20,48 +31,57 @@ export default function DefaultsScreen() {
   const { settings, updateSettings, completeOnboarding } = useHydration();
   const [windowStart, setWindowStart] = useState(settings.windowStart);
   const [windowEnd, setWindowEnd] = useState(settings.windowEnd);
-  const [interval, setInterval] = useState(String(settings.intervalMinutes));
   const [sipMl, setSipMl] = useState(String(settings.sipMl));
 
   const previewSettings = React.useMemo(() => {
     const startMinutes = parseTimeToMinutes(windowStart);
     const endMinutes = parseTimeToMinutes(windowEnd);
-    const hasValidWindow = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes;
-    const intervalValue = Number.parseInt(interval, 10);
+    const hasValidWindow =
+      startMinutes !== null &&
+      endMinutes !== null &&
+      getWindowMinutes({ ...settings, windowStart, windowEnd }) > 0;
     const sipValue = Number.parseInt(sipMl, 10);
 
     return {
       ...settings,
       windowStart: hasValidWindow ? windowStart : settings.windowStart,
       windowEnd: hasValidWindow ? windowEnd : settings.windowEnd,
-      intervalMinutes:
-        Number.isFinite(intervalValue) && intervalValue >= MIN_INTERVAL_MINUTES
-          ? intervalValue
-          : settings.intervalMinutes,
       sipMl: Number.isFinite(sipValue) && sipValue > 0 ? sipValue : settings.sipMl,
     };
-  }, [interval, settings, sipMl, windowEnd, windowStart]);
+  }, [settings, sipMl, windowEnd, windowStart]);
 
-  const previewMl = computeMlPerReminder(previewSettings);
-  const previewSips = computeSipsPerReminder(previewSettings);
+  const previewPlan = React.useMemo(() => {
+    const windowMinutes = getWindowMinutes(previewSettings);
+    const targetMl = litersToMl(previewSettings.targetLiters);
+    const factor = previewSettings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
+    const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
+    return computeAutoPlan({
+      remainingMl: targetMl,
+      windowMinutes,
+      minIntervalMinutes: MIN_INTERVAL_MINUTES,
+      maxReminders: maxBase,
+      desiredReminderMl: REMINDER_TARGET_ML,
+    });
+  }, [previewSettings]);
+
+  const previewMl = previewPlan?.mlPerReminder ?? REMINDER_TARGET_ML;
+  const previewSips = computeSipsPerReminder(previewMl, previewSettings.sipMl);
+  const previewInterval = previewPlan?.intervalMinutes ?? MIN_INTERVAL_MINUTES;
 
   const applyEdits = async () => {
     const patch: Partial<HydrationSettings> = {};
     const startMinutes = parseTimeToMinutes(windowStart);
     const endMinutes = parseTimeToMinutes(windowEnd);
-    if (startMinutes !== null && endMinutes !== null && endMinutes > startMinutes) {
+    if (
+      startMinutes !== null &&
+      endMinutes !== null &&
+      getWindowMinutes({ ...settings, windowStart, windowEnd }) > 0
+    ) {
       patch.windowStart = windowStart;
       patch.windowEnd = windowEnd;
     } else {
       setWindowStart(settings.windowStart);
       setWindowEnd(settings.windowEnd);
-    }
-
-    const nextInterval = Number.parseInt(interval, 10);
-    if (Number.isFinite(nextInterval) && nextInterval >= MIN_INTERVAL_MINUTES) {
-      patch.intervalMinutes = nextInterval;
-    } else {
-      setInterval(String(settings.intervalMinutes));
     }
 
     const nextSip = Number.parseInt(sipMl, 10);
@@ -97,20 +117,22 @@ export default function DefaultsScreen() {
         <View style={styles.cards}>
           <Card>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
-              Active hours: {settings.windowStart}-{settings.windowEnd}
+              Active hours: {previewSettings.windowStart}-{previewSettings.windowEnd}
             </Text>
           </Card>
           <Card>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
-              Reminder interval: {settings.intervalMinutes} minutes
+              Reminder spacing: auto (~{previewInterval} min)
             </Text>
           </Card>
           <Card>
-            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Sip size: {settings.sipMl} ml</Text>
+            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
+              Sip size: {previewSettings.sipMl} ml
+            </Text>
           </Card>
           <Card>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
-              Nudges: {settings.escalationEnabled ? "on" : "off"}
+              Nudges: {previewSettings.escalationEnabled ? "on" : "off"}
             </Text>
           </Card>
         </View>
@@ -131,15 +153,10 @@ export default function DefaultsScreen() {
               <TimeField label="Window end" value={windowEnd} onChange={setWindowEnd} />
             </View>
           </View>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            End time can be after midnight (example: 01:00).
+          </Text>
           <View style={styles.row}>
-            <View style={styles.field}>
-              <Field
-                label="Interval minutes"
-                value={interval}
-                onChangeText={setInterval}
-                keyboardType="number-pad"
-              />
-            </View>
             <View style={styles.field}>
               <Field label="Sip ml" value={sipMl} onChangeText={setSipMl} keyboardType="number-pad" />
             </View>
@@ -195,6 +212,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textTransform: "uppercase",
     letterSpacing: 0.6,
+  },
+  helper: {
+    fontSize: 13,
   },
   row: {
     flexDirection: "row",

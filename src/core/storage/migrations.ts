@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, MIN_INTERVAL_MINUTES, SCHEMA_VERSION } from "../constants";
+import { DEFAULT_SETTINGS, SCHEMA_VERSION } from "../constants";
 import { getDateKey, parseTimeToMinutes } from "../time";
 import { HydrationProgress, HydrationSettings, OnboardingState } from "../../features/hydration/domain/types";
 import { STORAGE_KEYS } from "./keys";
@@ -32,10 +32,6 @@ const normalizeSettings = (input: Partial<HydrationSettings> | null): HydrationS
     targetLiters: toNumber(base.targetLiters, DEFAULT_SETTINGS.targetLiters),
     windowStart: toTimeString(base.windowStart, DEFAULT_SETTINGS.windowStart),
     windowEnd: toTimeString(base.windowEnd, DEFAULT_SETTINGS.windowEnd),
-    intervalMinutes: Math.max(
-      MIN_INTERVAL_MINUTES,
-      toNumber(base.intervalMinutes, DEFAULT_SETTINGS.intervalMinutes)
-    ),
     sipMl: toNumber(base.sipMl, DEFAULT_SETTINGS.sipMl),
     escalationEnabled: toBoolean(base.escalationEnabled, DEFAULT_SETTINGS.escalationEnabled),
     soundEnabled: toBoolean(base.soundEnabled, DEFAULT_SETTINGS.soundEnabled),
