@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as Notifications from "expo-notifications";
+import { StatusBar } from "expo-status-bar";
 import { ThemeProvider } from "../src/shared/theme/ThemeProvider";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -14,6 +15,7 @@ import {
 } from "../src/features/hydration/notifications/notifier";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
 import { NOTIFICATION_ACTION_LOG } from "../src/core/constants";
+import { darkColors, lightColors } from "../src/shared/theme/tokens";
 
 const RootLayoutNav = () => {
   const router = useRouter();
@@ -124,9 +126,13 @@ const RootLayoutNav = () => {
 
 const AppShell = () => {
   const { settings } = useHydration();
+  const isDark = settings.appearanceMode === "dark";
+  const statusBarStyle = isDark ? "light" : "dark";
+  const statusBarBackground = isDark ? darkColors.background : lightColors.background;
   return (
     <SafeAreaProvider>
       <ThemeProvider mode={settings.appearanceMode}>
+        <StatusBar style={statusBarStyle} backgroundColor={statusBarBackground} />
         <RootLayoutNav />
       </ThemeProvider>
     </SafeAreaProvider>

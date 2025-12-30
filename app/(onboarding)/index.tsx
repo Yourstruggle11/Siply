@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Screen } from "../../src/shared/components/Screen";
+import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { TAGLINE, DEFAULT_SETTINGS } from "../../src/core/constants";
@@ -22,7 +23,7 @@ export default function WelcomeScreen() {
     <Screen>
       <View style={styles.container}>
         <View style={styles.content}>
-          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Siply</Text>
+          <PulsingTitle text="Siply" style={styles.title} />
           <Text style={[styles.tagline, { color: theme.colors.textSecondary }]}>{TAGLINE}</Text>
           <Text style={[styles.body, { color: theme.colors.textPrimary }]}>
             Siply spaces your water intake across the day with quiet reminders.

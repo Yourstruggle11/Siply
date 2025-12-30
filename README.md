@@ -1,4 +1,4 @@
-# Siply
+# <img src="assets/icon.png" alt="Siply icon" width="24" height="24" style="vertical-align:middle; margin-right:6px;" /> Siply
 
 drink water, on time.
 

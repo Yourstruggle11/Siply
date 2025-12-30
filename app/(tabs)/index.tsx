@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Screen } from "../../src/shared/components/Screen";
-import { Card } from "../../src/shared/components/Card";
+import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
+import { AnimatedProgressValue } from "../../src/shared/components/AnimatedProgressValue";
+import { AnimatedStatRow } from "../../src/shared/components/AnimatedStatRow";
+import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { Field } from "../../src/shared/components/Field";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { ProgressBar } from "../../src/features/hydration/ui/components/ProgressBar";
@@ -62,10 +65,10 @@ export default function HomeScreen() {
   return (
     <Screen scroll>
       <View style={styles.container}>
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Today</Text>
+        <PulsingTitle text="Today" style={styles.title} />
 
         {permission && !permission.granted ? (
-          <Card style={styles.alertCard}>
+          <AnimatedCard style={styles.alertCard} delay={80}>
             <Text style={[styles.alertTitle, { color: theme.colors.textPrimary }]}>
               Notifications are off
             </Text>
@@ -77,22 +80,29 @@ export default function HomeScreen() {
               variant="secondary"
               onPress={permission.canAskAgain ? requestPermission : openSettings}
             />
-          </Card>
+          </AnimatedCard>
         ) : null}
 
-        <Card>
+        <AnimatedCard delay={120}>
           <View style={styles.progressHeader}>
-            <Text style={[styles.progressText, { color: theme.colors.textPrimary }]}>
-              {plan.consumedMl} ml of {plan.targetMl} ml
-            </Text>
-            <Text style={[styles.progressSubtext, { color: theme.colors.textSecondary }]}>
-              Remaining: {plan.remainingMl} ml
-            </Text>
+            <View style={styles.progressValueRow}>
+              <AnimatedProgressValue value={plan.consumedMl} suffix=" ml" style={styles.progressValue} />
+              <Text style={[styles.progressSubtext, { color: theme.colors.textSecondary }]}>
+                of {plan.targetMl} ml
+              </Text>
+            </View>
+            <AnimatedStatRow
+              label="Remaining"
+              value={`${plan.remainingMl} ml`}
+              delay={160}
+              labelStyle={[styles.progressSubtext, { color: theme.colors.textSecondary }]}
+              valueStyle={[styles.progressSubtext, { color: theme.colors.textSecondary }]}
+            />
           </View>
           <ProgressBar progress={progress} />
-        </Card>
+        </AnimatedCard>
 
-        <Card>
+        <AnimatedCard delay={180}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Quick log</Text>
           <View style={styles.quickLogRow}>
             {quickLog.presets.map((amount) => {
@@ -124,18 +134,28 @@ export default function HomeScreen() {
           <Text style={[styles.quickLogHint, { color: theme.colors.textSecondary }]}>
             Customize presets in Settings.
           </Text>
-        </Card>
+        </AnimatedCard>
 
-        <Card>
-          <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-            {plan.targetMet
-              ? "Next sip: target met for today"
-              : `Next sip: ~${plan.mlPerReminder} ml (${plan.sipsPerReminder} sips)`}
-          </Text>
-          <Text style={[styles.label, { color: theme.colors.textSecondary, marginTop: 6 }]}>
-            Next reminder at {plan.nextReminderAt ? formatTimeForDisplay(plan.nextReminderAt) : "not scheduled"}
-          </Text>
-        </Card>
+        <AnimatedCard delay={240} style={styles.statCard}>
+          <AnimatedStatRow
+            label="Next sip"
+            value={
+              plan.targetMet
+                ? "Target met for today"
+                : `~${plan.mlPerReminder} ml (${plan.sipsPerReminder} sips)`
+            }
+            delay={260}
+            labelStyle={styles.label}
+            valueStyle={styles.labelValue}
+          />
+          <AnimatedStatRow
+            label="Next reminder"
+            value={plan.nextReminderAt ? formatTimeForDisplay(plan.nextReminderAt) : "Not scheduled"}
+            delay={300}
+            labelStyle={styles.label}
+            valueStyle={styles.labelValue}
+          />
+        </AnimatedCard>
 
         <View style={styles.actions}>
           <PrimaryButton label="I drank" onPress={handleQuickAdd} />
@@ -147,7 +167,7 @@ export default function HomeScreen() {
         </View>
 
         {showAddAmount ? (
-          <Card>
+          <AnimatedCard delay={300}>
             <View style={styles.addRow}>
               <Field
                 label="Amount (ml)"
@@ -158,7 +178,7 @@ export default function HomeScreen() {
               />
               <PrimaryButton label="Add" onPress={handleAddAmount} />
             </View>
-          </Card>
+          </AnimatedCard>
         ) : null}
       </View>
     </Screen>
@@ -178,9 +198,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 6,
   },
-  progressText: {
+  progressValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
+  },
+  progressValue: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   progressSubtext: {
     fontSize: 13,
@@ -188,8 +213,15 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
   },
+  labelValue: {
+    fontSize: 14,
+    textAlign: "right",
+  },
   actions: {
     gap: 12,
+  },
+  statCard: {
+    gap: 10,
   },
   addRow: {
     gap: 12,

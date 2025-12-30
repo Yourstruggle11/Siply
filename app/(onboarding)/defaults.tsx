@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Screen } from "../../src/shared/components/Screen";
-import { Card } from "../../src/shared/components/Card";
+import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
 import { Field } from "../../src/shared/components/Field";
 import { TimeField } from "../../src/shared/components/TimeField";
 import { ToggleRow } from "../../src/shared/components/ToggleRow";
@@ -115,33 +115,33 @@ export default function DefaultsScreen() {
         </View>
 
         <View style={styles.cards}>
-          <Card>
+          <AnimatedCard delay={80}>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
               Active hours: {previewSettings.windowStart}-{previewSettings.windowEnd}
             </Text>
-          </Card>
-          <Card>
+          </AnimatedCard>
+          <AnimatedCard delay={140}>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
               Reminder spacing: auto (~{previewInterval} min)
             </Text>
-          </Card>
-          <Card>
+          </AnimatedCard>
+          <AnimatedCard delay={200}>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
               Sip size: {previewSettings.sipMl} ml
             </Text>
-          </Card>
-          <Card>
+          </AnimatedCard>
+          <AnimatedCard delay={260}>
             <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
               Nudges: {previewSettings.escalationEnabled ? "on" : "off"}
             </Text>
-          </Card>
+          </AnimatedCard>
         </View>
 
-        <Card style={styles.preview}>
+        <AnimatedCard style={styles.preview} delay={320}>
           <Text style={[styles.previewText, { color: theme.colors.textPrimary }]}>
             One reminder ~= {previewMl} ml ({previewSips} sips)
           </Text>
-        </Card>
+        </AnimatedCard>
 
         <View style={styles.editor}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Edit defaults</Text>

@@ -60,6 +60,7 @@ export const TimeField = ({ label, value, onChange }: TimeFieldProps) => {
           {
             backgroundColor: theme.colors.surface,
             borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
           },
         ]}
       >
@@ -183,9 +184,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
   value: {
     fontSize: 16,
@@ -199,8 +199,8 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalCard: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderWidth: 1,
     padding: 16,
   },
@@ -236,14 +236,14 @@ const styles = StyleSheet.create({
   },
   list: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     maxHeight: 240,
     paddingVertical: 6,
   },
   listItem: {
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     marginHorizontal: 6,
   },
   listText: {

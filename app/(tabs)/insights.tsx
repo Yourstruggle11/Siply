@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
+import * as Haptics from "expo-haptics";
 import { Screen } from "../../src/shared/components/Screen";
-import { Card } from "../../src/shared/components/Card";
+import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
+import { AnimatedDayRow } from "../../src/shared/components/AnimatedDayRow";
+import { AnimatedProgressValue } from "../../src/shared/components/AnimatedProgressValue";
+import { AnimatedStatRow } from "../../src/shared/components/AnimatedStatRow";
+import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { ProgressBar } from "../../src/features/hydration/ui/components/ProgressBar";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { ShareCard } from "../../src/features/hydration/ui/components/ShareCard";
@@ -36,13 +41,16 @@ export default function InsightsScreen() {
   const theme = useTheme();
   const { settings, progress, history } = useHydration();
   const [sharing, setSharing] = useState(false);
-  const viewShotRef = useRef<any>(null);
-  const viewShotComponentRef = useRef<React.ComponentType<any> | null>(null);
   const [shareReady, setShareReady] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const shareEnabled = Constants.appOwnership !== "expo";
-  const ViewShotComponent = viewShotComponentRef.current;
+  const shareViewRef = useRef<any>(null);
+  const captureRefFn = useRef<null | ((view: any, options?: any) => Promise<string>)>(null);
 
-  const goalMl = useMemo(() => litersToMl(settings.targetLiters), [settings.targetLiters]);
+  const goalMl = useMemo(
+    () => litersToMl(settings.targetLiters),
+    [settings.targetLiters]
+  );
   const goodThresholdMl = useMemo(
     () => Math.round((goalMl * settings.gentleGoalThreshold) / 100),
     [goalMl, settings.gentleGoalThreshold]
@@ -61,14 +69,26 @@ export default function InsightsScreen() {
   );
 
   const streaks = useMemo(
-    () => computeStreakStats(history, new Date(), goalMl, goodThresholdMl, settings.gentleGoalEnabled),
+    () =>
+      computeStreakStats(
+        history,
+        new Date(),
+        goalMl,
+        goodThresholdMl,
+        settings.gentleGoalEnabled
+      ),
     [goodThresholdMl, goalMl, history, settings.gentleGoalEnabled]
   );
 
-  const bestHours = useMemo(() => computeBestHours(history, new Date(), 30), [history]);
+  const bestHours = useMemo(
+    () => computeBestHours(history, new Date(), 30),
+    [history]
+  );
 
   useEffect(() => {
     if (!shareEnabled) {
+      setShareReady(false);
+      setShareError(null);
       return;
     }
     let mounted = true;
@@ -77,15 +97,23 @@ export default function InsightsScreen() {
         if (!mounted) {
           return;
         }
-        viewShotComponentRef.current = module.default as React.ComponentType<any>;
+        if (!module.captureRef) {
+          captureRefFn.current = null;
+          setShareReady(false);
+          setShareError("Capture module unavailable.");
+          return;
+        }
+        captureRefFn.current = module.captureRef;
         setShareReady(true);
+        setShareError(null);
       })
       .catch(() => {
         if (!mounted) {
           return;
         }
-        viewShotComponentRef.current = null;
+        captureRefFn.current = null;
         setShareReady(false);
+        setShareError("Unable to load the capture module.");
       });
     return () => {
       mounted = false;
@@ -93,13 +121,22 @@ export default function InsightsScreen() {
   }, [shareEnabled]);
 
   const handleShare = async () => {
-    if (!shareEnabled || !shareReady || !viewShotRef.current || sharing) {
+    if (!shareEnabled || !shareReady || !captureRefFn.current || !shareViewRef.current || sharing) {
       return;
     }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSharing(true);
     try {
-      const uri = await viewShotRef.current.capture?.();
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+      const uri = await captureRefFn.current(shareViewRef, {
+        format: "png",
+        quality: 1,
+        result: "tmpfile",
+      });
       if (!uri) {
+        setShareError("Capture failed. Try again.");
         return;
       }
       let shared = false;
@@ -107,7 +144,11 @@ export default function InsightsScreen() {
         const Sharing = await import("expo-sharing");
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
-          await Sharing.shareAsync(uri);
+          await Sharing.shareAsync(uri, {
+            mimeType: "image/png",
+            dialogTitle: "Share progress",
+            UTI: "public.png",
+          });
           shared = true;
         }
       } catch {
@@ -116,6 +157,9 @@ export default function InsightsScreen() {
       if (!shared) {
         await Share.share({ url: uri, message: "Siply progress" });
       }
+      setShareError(null);
+    } catch {
+      setShareError("Capture failed. Try again.");
     } finally {
       setSharing(false);
     }
@@ -124,113 +168,145 @@ export default function InsightsScreen() {
   return (
     <Screen scroll>
       <View style={styles.container}>
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Insights</Text>
+        <PulsingTitle text="Insights" style={styles.title} />
 
-        <Card style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Today</Text>
-          <Text style={[styles.value, { color: theme.colors.textPrimary }]}>
-            {progress.consumedMl} ml of {goalMl} ml
+        <AnimatedCard style={styles.section} delay={100}>
+          <Text
+            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
+          >
+            Today
           </Text>
-          <ProgressBar progress={goalMl > 0 ? progress.consumedMl / goalMl : 0} />
-        </Card>
+          <View style={styles.todayValueContainer}>
+            <AnimatedProgressValue value={progress.consumedMl} suffix=" ml" style={styles.value} />
+            <Text
+              style={[styles.goalText, { color: theme.colors.textSecondary }]}
+            >
+              of {goalMl} ml
+            </Text>
+          </View>
+          <ProgressBar
+            progress={goalMl > 0 ? progress.consumedMl / goalMl : 0}
+          />
+        </AnimatedCard>
 
-        <Card style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Last 7 days</Text>
+        <AnimatedCard style={styles.section} delay={200}>
+          <Text
+            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
+          >
+            Last 7 days
+          </Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             Weekly total: {weeklyTotal} ml
           </Text>
           <View style={styles.list}>
-            {last7Summaries.map((entry) => (
-              <View key={`day-${entry.date}`} style={styles.dayRow}>
-                <Text style={[styles.dayLabel, { color: theme.colors.textSecondary }]}>
-                  {formatDayLabel(entry.date)}
-                </Text>
-                <View style={styles.dayBar}>
-                  <ProgressBar progress={entry.goalMl > 0 ? entry.totalMl / entry.goalMl : 0} />
-                </View>
-                <Text style={[styles.dayValue, { color: theme.colors.textPrimary }]}>
-                  {entry.totalMl} ml
-                </Text>
-              </View>
+            {last7Summaries.map((entry, index) => (
+              <AnimatedDayRow
+                key={`day-${entry.date}`}
+                label={formatDayLabel(entry.date)}
+                value={`${entry.totalMl} ml`}
+                delay={250 + index * 50}
+                enableHaptics
+              >
+                <ProgressBar progress={entry.goalMl > 0 ? entry.totalMl / entry.goalMl : 0} />
+              </AnimatedDayRow>
             ))}
           </View>
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Streaks</Text>
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Current streak</Text>
-            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>
-              {streaks.currentStreak} days
-            </Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Best streak</Text>
-            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>
-              {streaks.bestStreak} days
-            </Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Goal hits (7d)</Text>
-            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>
-              {streaks.last7GoalHits}
-            </Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Goal hits (30d)</Text>
-            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>
-              {streaks.last30GoalHits}
-            </Text>
-          </View>
+        <AnimatedCard style={styles.section} delay={300}>
+          <Text
+            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
+          >
+            Streaks
+          </Text>
+          <AnimatedStatRow
+            label="Current streak"
+            value={`${streaks.currentStreak} days`}
+            delay={350}
+          />
+          <AnimatedStatRow
+            label="Best streak"
+            value={`${streaks.bestStreak} days`}
+            delay={400}
+          />
+          <AnimatedStatRow
+            label="Goal hits (7d)"
+            value={streaks.last7GoalHits}
+            delay={450}
+          />
+          <AnimatedStatRow
+            label="Goal hits (30d)"
+            value={streaks.last30GoalHits}
+            delay={500}
+          />
           {settings.gentleGoalEnabled && streaks.currentGoodStreak !== null ? (
             <>
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Good day streak</Text>
-                <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>
-                  {streaks.currentGoodStreak} days
-                </Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Best good day streak</Text>
-                <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>
-                  {streaks.bestGoodStreak ?? 0} days
-                </Text>
-              </View>
+              <AnimatedStatRow
+                label="Good day streak"
+                value={`${streaks.currentGoodStreak} days`}
+                delay={550}
+              />
+              <AnimatedStatRow
+                label="Best good day streak"
+                value={`${streaks.bestGoodStreak ?? 0} days`}
+                delay={600}
+              />
             </>
           ) : null}
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Best hours</Text>
-          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
-            {bestHours.length > 0 ? bestHours.map(formatHour).join(", ") : "Not enough data yet."}
+        <AnimatedCard style={styles.section} delay={400}>
+          <Text
+            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
+          >
+            Best hours
           </Text>
-        </Card>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            {bestHours.length > 0
+              ? bestHours.map(formatHour).join(", ")
+              : "Not enough data yet."}
+          </Text>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Share</Text>
+        <AnimatedCard style={styles.section} delay={500}>
+          <Text
+            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
+          >
+            Share
+          </Text>
           <PrimaryButton
             label={sharing ? "Preparing..." : "Share progress"}
             onPress={handleShare}
             disabled={!shareEnabled || !shareReady || sharing}
           />
-          {!shareEnabled ? (
+          {shareError ? (
             <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
-              Share requires a development build. Expo Go does not include the capture module.
+              {shareError}
             </Text>
           ) : null}
-        </Card>
+          {!shareEnabled ? (
+            <Text
+              style={[styles.helper, { color: theme.colors.textSecondary }]}
+            >
+              Share requires a development build. Expo Go does not include the
+              capture module.
+            </Text>
+          ) : null}
+        </AnimatedCard>
 
-        {shareReady && ViewShotComponent ? (
-          <View style={styles.captureContainer} pointerEvents="none">
-            <ViewShotComponent ref={viewShotRef} options={{ format: "png", quality: 1 }}>
-              <ShareCard
-                progress={goalMl > 0 ? progress.consumedMl / goalMl : 0}
-                consumedMl={progress.consumedMl}
-                targetMl={goalMl}
-                currentStreak={streaks.currentStreak}
-              />
-            </ViewShotComponent>
+        {shareReady ? (
+          <View
+            ref={shareViewRef}
+            collapsable={false}
+            style={styles.captureContainer}
+            pointerEvents="none"
+          >
+            <ShareCard
+              progress={goalMl > 0 ? progress.consumedMl / goalMl : 0}
+              consumedMl={progress.consumedMl}
+              targetMl={goalMl}
+              currentStreak={streaks.currentStreak}
+            />
           </View>
         ) : null}
       </View>
@@ -258,41 +334,20 @@ const styles = StyleSheet.create({
   helper: {
     fontSize: 13,
   },
+  todayValueContainer: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
+  },
   value: {
     fontSize: 16,
     fontWeight: "600",
   },
+  goalText: {
+    fontSize: 14,
+  },
   list: {
     gap: 10,
-  },
-  dayRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  dayLabel: {
-    width: 42,
-    fontSize: 12,
-    textTransform: "uppercase",
-  },
-  dayBar: {
-    flex: 1,
-  },
-  dayValue: {
-    width: 64,
-    fontSize: 12,
-    textAlign: "right",
-  },
-  statRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  statLabel: {
-    fontSize: 14,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: "600",
   },
   captureContainer: {
     position: "absolute",

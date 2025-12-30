@@ -23,9 +23,11 @@ export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }:
       style={({ pressed }) => [
         styles.button,
         {
+          borderRadius: theme.radius.lg,
           backgroundColor,
           borderColor,
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
+          opacity: disabled ? 0.5 : pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
         },
       ]}
     >
@@ -39,9 +41,8 @@ export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }:
 const styles = StyleSheet.create({
   button: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
     alignItems: "center",
   },
   label: {

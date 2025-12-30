@@ -18,6 +18,7 @@ export type ReminderSlot = {
 export type ScheduleResult = {
   slots: ReminderSlot[];
   targetMet: boolean;
+  status?: "success" | "no_window" | "target_met" | "config_error";
 };
 
 const buildWindowTimes = (
@@ -30,8 +31,15 @@ const buildWindowTimes = (
   if (end <= start || intervalMinutes <= 0) {
     return times;
   }
-  for (let current = new Date(start); current < end && times.length < maxCount; current = addMinutes(current, intervalMinutes)) {
+  const maxIterations = Math.min(maxCount, 1000);
+  for (let current = new Date(start), i = 0; current < end && times.length < maxCount && i < maxIterations; i += 1) {
     times.push(new Date(current));
+    const next = addMinutes(current, intervalMinutes);
+    if (next.getTime() <= current.getTime()) {
+      console.warn("Siply: buildWindowTimes stalled, stopping to avoid infinite loop.");
+      break;
+    }
+    current = next;
   }
   return times;
 };
@@ -56,9 +64,13 @@ export const computeReminderSchedule = (
   settings: HydrationSettings,
   consumedMl: number
 ): ScheduleResult => {
+  if (!settings || settings.sipMl <= 0 || settings.targetLiters <= 0) {
+    return { slots: [], targetMet: false, status: "config_error" };
+  }
+
   const windowMinutesTotal = getWindowMinutes(settings);
   if (windowMinutesTotal <= 0) {
-    return { slots: [], targetMet: false };
+    return { slots: [], targetMet: false, status: "no_window" };
   }
 
   const targetMl = litersToMl(settings.targetLiters);
@@ -89,8 +101,11 @@ export const computeReminderSchedule = (
 
     const isCurrent = now >= window.start && now < window.end;
     const remainingMl = isCurrent ? Math.max(targetMl - consumedMl, 0) : targetMl;
+    if (remainingMl <= 0) {
+      continue;
+    }
     const windowMinutes = isCurrent
-      ? Math.max(0, Math.floor((window.end.getTime() - now.getTime()) / 60000))
+      ? Math.max(0, Math.ceil((window.end.getTime() - now.getTime()) / 60000))
       : windowMinutesTotal;
 
     const plan =
@@ -104,7 +119,7 @@ export const computeReminderSchedule = (
           })
         : null;
 
-    if (!plan) {
+    if (!plan || plan.mlPerReminder <= 0 || plan.intervalMinutes <= 0) {
       continue;
     }
 
@@ -114,12 +129,34 @@ export const computeReminderSchedule = (
     if (isCurrent && times.length === 0 && windowMinutes > 0) {
       const immediate = addMinutes(now, 1);
       if (immediate < window.end) {
-        times = [immediate];
+        const ml = Math.max(1, remainingMl);
+        slots.push({
+          time: immediate,
+          mlPerReminder: ml,
+          sipsPerReminder: computeSipsPerReminder(ml, settings.sipMl),
+          intervalMinutes: 0,
+        });
       }
+      continue;
     }
 
     slots.push(...buildSlots(times, plan.mlPerReminder, plan.intervalMinutes, settings.sipMl));
   }
 
-  return { slots, targetMet };
+  const deduped: ReminderSlot[] = [];
+  const seen = new Set<number>();
+  for (const slot of slots) {
+    const key = slot.time.getTime();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(slot);
+  }
+
+  return {
+    slots: deduped,
+    targetMet,
+    status: targetMet ? "target_met" : "success",
+  };
 };

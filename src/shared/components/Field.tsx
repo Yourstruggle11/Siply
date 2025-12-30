@@ -20,6 +20,7 @@ export const Field = ({ label, helper, style, ...props }: FieldProps) => {
             color: theme.colors.textPrimary,
             borderColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
+            borderRadius: theme.radius.md,
           },
           style,
         ]}
@@ -39,9 +40,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     fontSize: 16,
   },
   helper: {

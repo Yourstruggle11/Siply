@@ -1,7 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Screen } from "../../src/shared/components/Screen";
-import { Card } from "../../src/shared/components/Card";
+import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
+import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 
 export default function HelpScreen() {
@@ -9,8 +10,8 @@ export default function HelpScreen() {
   return (
     <Screen scroll>
       <View style={styles.container}>
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Help</Text>
-        <Card style={styles.section}>
+        <PulsingTitle text="Help" style={styles.title} />
+        <AnimatedCard style={styles.section} delay={100}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Notifications</Text>
           <View style={styles.list}>
             <View style={styles.listItem}>
@@ -44,9 +45,9 @@ export default function HelpScreen() {
               </Text>
             </View>
           </View>
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={180}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Active window</Text>
           <View style={styles.list}>
             <View style={styles.listItem}>
@@ -56,9 +57,9 @@ export default function HelpScreen() {
               </Text>
             </View>
           </View>
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={260}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Action buttons</Text>
           <View style={styles.list}>
             <View style={styles.listItem}>
@@ -86,7 +87,7 @@ export default function HelpScreen() {
               </Text>
             </View>
           </View>
-        </Card>
+        </AnimatedCard>
       </View>
     </Screen>
   );

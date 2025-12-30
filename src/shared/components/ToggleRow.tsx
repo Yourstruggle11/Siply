@@ -17,7 +17,13 @@ export const ToggleRow = ({ label, helper, value, onValueChange }: ToggleRowProp
         <Text style={[styles.label, { color: theme.colors.textPrimary }]}>{label}</Text>
         {helper ? <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>{helper}</Text> : null}
       </View>
-      <Switch value={value} onValueChange={onValueChange} />
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+        thumbColor={theme.colors.surface}
+        ios_backgroundColor={theme.colors.border}
+      />
     </View>
   );
 };

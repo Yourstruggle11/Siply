@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Screen } from "../../src/shared/components/Screen";
-import { Card } from "../../src/shared/components/Card";
+import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
+import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { Field } from "../../src/shared/components/Field";
 import { TimeField } from "../../src/shared/components/TimeField";
 import { ToggleRow } from "../../src/shared/components/ToggleRow";
@@ -175,10 +176,9 @@ export default function SettingsScreen() {
     if (!Number.isFinite(weight) || weight <= 0) {
       return null;
     }
-    const base = weight * 30;
-    const activityFactor = calcActivity === "high" ? 1.2 : calcActivity === "medium" ? 1.1 : 1.0;
+    const basePerKg = calcActivity === "high" ? 40 : calcActivity === "medium" ? 35 : 30;
     const climateFactor = calcClimateHot ? 1.1 : 1.0;
-    return Math.round(base * activityFactor * climateFactor);
+    return Math.round(weight * basePerKg * climateFactor);
   }, [calcActivity, calcClimateHot, calcWeight]);
 
   const applySuggestedGoal = () => {
@@ -193,21 +193,21 @@ export default function SettingsScreen() {
   return (
     <Screen scroll>
       <View style={styles.container}>
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Settings</Text>
+        <PulsingTitle text="Settings" style={styles.title} />
 
         {isDirty ? (
-          <Card style={styles.saveBar}>
+          <AnimatedCard style={styles.saveBar} delay={60}>
             <Text style={[styles.saveText, { color: theme.colors.textPrimary }]}>Unsaved changes</Text>
             <PrimaryButton label="Save changes" onPress={handleSave} />
-          </Card>
+          </AnimatedCard>
         ) : null}
 
-        <Card>
+        <AnimatedCard delay={100}>
           <Text style={[styles.aboutTitle, { color: theme.colors.textPrimary }]}>Siply</Text>
           <Text style={[styles.aboutTagline, { color: theme.colors.textSecondary }]}>{TAGLINE}</Text>
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={140}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily target</Text>
           <Field
             label="Target liters"
@@ -215,9 +215,9 @@ export default function SettingsScreen() {
             onChangeText={(value) => setDraft((prev) => ({ ...prev, target: value }))}
             keyboardType="decimal-pad"
           />
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={180}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Active window</Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             End time can be after midnight (example: 01:00).
@@ -238,9 +238,9 @@ export default function SettingsScreen() {
               />
             </View>
           </View>
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={220}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Reminders</Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             Reminder spacing: automatic (~{previewInterval} min)
@@ -284,9 +284,9 @@ export default function SettingsScreen() {
               ) : null}
             </View>
           ) : null}
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={260}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Gentle goals</Text>
           <ToggleRow
             label="Enable gentle goal"
@@ -300,9 +300,9 @@ export default function SettingsScreen() {
             onChangeText={(value) => setDraft((prev) => ({ ...prev, gentleGoalThreshold: value }))}
             keyboardType="number-pad"
           />
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={300}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Quick log presets</Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             Add, remove, or reorder your cup sizes.
@@ -369,12 +369,15 @@ export default function SettingsScreen() {
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             {quickLog.presets.length}/{QUICK_LOG_MAX_PRESETS} presets
           </Text>
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={340}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Goal calculator</Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             General estimate only. Not medical advice.
+          </Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            Based on 30-40 ml per kg, adjusted for activity and climate.
           </Text>
           <Field
             label="Weight (kg)"
@@ -436,9 +439,9 @@ export default function SettingsScreen() {
               <PrimaryButton label="Use suggested goal" onPress={applySuggestedGoal} />
             </View>
           ) : null}
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={380}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Appearance</Text>
           <ToggleRow
             label="Dark mode"
@@ -448,9 +451,9 @@ export default function SettingsScreen() {
               setDraft((prev) => ({ ...prev, appearanceMode: value ? "dark" : "light" }))
             }
           />
-        </Card>
+        </AnimatedCard>
 
-        <Card style={styles.section}>
+        <AnimatedCard style={styles.section} delay={420}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Actions</Text>
           <View style={styles.actionGroup}>
             <PrimaryButton
@@ -481,7 +484,7 @@ export default function SettingsScreen() {
               }}
             />
           </View>
-        </Card>
+        </AnimatedCard>
       </View>
     </Screen>
   );
