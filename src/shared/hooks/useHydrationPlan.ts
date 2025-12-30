@@ -37,6 +37,7 @@ export const useHydrationPlan = () => {
     const sipsPerReminder = nextSlot?.sipsPerReminder ?? fallbackSips;
     const nextReminderAt = nextSlot?.time ?? null;
     const remindersPerDay = fallbackPlan?.reminders ?? schedule.slots.length;
+    const remainingMl = Math.max(0, targetMl - progress.consumedMl);
 
     return {
       targetMl,
@@ -45,6 +46,7 @@ export const useHydrationPlan = () => {
       sipsPerReminder,
       nextReminderAt,
       targetMet: schedule.targetMet,
+      remainingMl,
       consumedMl: progress.consumedMl,
     };
   }, [settings, progress.consumedMl]);

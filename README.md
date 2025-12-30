@@ -18,6 +18,13 @@ drink water, on time.
 - Sound is enabled per notification when the setting is on; silent or DND may still mute.
 - Notifications include an “I drank” action to log a dose without opening the app.
 
+## Key features
+- Quick Log presets (editable cup sizes) with optional last-used highlight and haptics.
+- Gentle goals and streaks (current/best, 7d/30d hits).
+- Insights screen with weekly summary and best hours.
+- Shareable Siply Card image from Insights.
+- Optional goal calculator in Settings.
+
 ## Builds (shareable test builds)
 Android (APK, easiest to share):
 - `npm run build:android:preview`
@@ -38,6 +45,9 @@ Notes:
 - Notifications cannot override Silent mode or Do Not Disturb.
 - Android may delay or coalesce reminders under battery optimization.
 - Expo Go warns about remote push notifications being unsupported. Siply uses local scheduled notifications, which still work in Expo Go.
+
+## Share card
+- Uses `react-native-view-shot` for image capture and `expo-sharing` to open the share sheet.
 
 ## Icons
 - Source SVG: `assets/icon/siply-icon.svg`

@@ -18,8 +18,24 @@ import { NOTIFICATION_ACTION_LOG } from "../src/core/constants";
 const RootLayoutNav = () => {
   const router = useRouter();
   const segments = useSegments();
-  const { settings, onboarding, hydrated, refreshProgressDate, progress, addConsumed } =
-    useHydration();
+  const {
+    settings,
+    onboarding,
+    hydrated,
+    refreshProgressDate,
+    progress,
+    addConsumed,
+  } = useHydration();
+  const ensureNotificationPermission = React.useCallback(async () => {
+    const status = await Notifications.getPermissionsAsync();
+    if (status.granted) {
+      return;
+    }
+    if (status.canAskAgain === false) {
+      return;
+    }
+    await Notifications.requestPermissionsAsync();
+  }, []);
 
   useEffect(() => {
     void configureNotificationChannels();
@@ -29,7 +45,8 @@ const RootLayoutNav = () => {
   useEffect(() => {
     Notifications.setNotificationHandler({
       handleNotification: async (notification) => {
-        const forceSound = notification.request.content.data?.forceSound === true;
+        const forceSound =
+          notification.request.content.data?.forceSound === true;
         return {
           shouldShowBanner: true,
           shouldShowList: true,
@@ -57,22 +74,37 @@ const RootLayoutNav = () => {
       return;
     }
     void rescheduleNotifications(settings, progress.consumedMl);
-  }, [hydrated, onboarding.completed, settings, progress.consumedMl]);
+  }, [
+    hydrated,
+    onboarding.completed,
+    settings,
+    progress.consumedMl,
+    ensureNotificationPermission,
+  ]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      if (response.actionIdentifier !== NOTIFICATION_ACTION_LOG) {
-        return;
+    if (!hydrated || !onboarding.completed) {
+      return;
+    }
+    void ensureNotificationPermission();
+  }, [hydrated, onboarding.completed, ensureNotificationPermission]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        if (response.actionIdentifier !== NOTIFICATION_ACTION_LOG) {
+          return;
+        }
+        const payload = response.notification.request.content.data?.ml;
+        const amount =
+          typeof payload === "number"
+            ? payload
+            : Number.parseInt(typeof payload === "string" ? payload : "", 10);
+        if (Number.isFinite(amount) && amount > 0) {
+          void addConsumed(amount);
+        }
       }
-      const payload = response.notification.request.content.data?.ml;
-      const amount =
-        typeof payload === "number"
-          ? payload
-          : Number.parseInt(typeof payload === "string" ? payload : "", 10);
-      if (Number.isFinite(amount) && amount > 0) {
-        void addConsumed(amount);
-      }
-    });
+    );
 
     return () => subscription.remove();
   }, [addConsumed]);
@@ -81,6 +113,9 @@ const RootLayoutNav = () => {
     refreshProgressDate();
     if (hydrated && onboarding.completed) {
       void rescheduleNotifications(settings, progress.consumedMl);
+    }
+    if (hydrated && onboarding.completed) {
+      void ensureNotificationPermission();
     }
   });
 
