@@ -8,7 +8,7 @@ drink water, on time.
 2) Generate icons
    - `npm run generate:icons`
 3) Start the app
-   - `npx expo start`
+   - `npm start`
 
 ## Notification strategy
 - Local notifications are scheduled in a rolling 24 hour window within the active hours.
@@ -16,7 +16,8 @@ drink water, on time.
 - Reminder spacing is computed automatically based on remaining target and remaining window time.
 - Optional nudges are scheduled at +5 and +10 minutes for each reminder when enabled.
 - Sound is enabled per notification when the setting is on; silent or DND may still mute.
-- Notifications include an “I drank” action to log a dose without opening the app.
+- Notifications include an "I drank" action to log a dose without opening the app.
+- The action is de-duplicated per notification and dismisses the alert immediately.
 
 ## Key features
 - Quick Log presets (editable cup sizes) with optional last-used highlight and haptics.
@@ -48,6 +49,10 @@ Notes:
 
 ## Share card
 - Uses `react-native-view-shot` for image capture and `expo-sharing` to open the share sheet.
+
+## Notification sound
+- Custom sound: `assets/sounds/siply_reminder.wav`
+- Android uses notification channels, uninstall/reinstall or reset the channel to apply sound changes.
 
 ## Icons
 - Source SVG: `assets/icon/siply-icon.svg`

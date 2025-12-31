@@ -13,6 +13,9 @@ import { HydrationSettings } from "../domain/types";
 
 const ANDROID_CHANNEL_SOUND = "siply-reminders-sound";
 const ANDROID_CHANNEL_SILENT = "siply-reminders-silent";
+let channelsReady: Promise<void> | null = null;
+const NOTIFICATION_SOUND =
+  Platform.OS === "android" ? "siply_reminder" : "siply_reminder.wav";
 
 const formatReminderBody = (ml: number, sips: number) => `Drink ~${ml} ml (${sips} sips)`;
 const formatNudgeBody = (ml: number, sips: number) => `Reminder: ~${ml} ml (${sips} sips)`;
@@ -32,7 +35,7 @@ type NotificationScheduleResult = {
 const buildContent = (body: string, soundEnabled: boolean, data?: Record<string, unknown>) => ({
   title: APP_NAME,
   body,
-  sound: soundEnabled ? "default" : undefined,
+  sound: soundEnabled ? NOTIFICATION_SOUND : undefined,
   priority: soundEnabled
     ? Notifications.AndroidNotificationPriority.HIGH
     : Notifications.AndroidNotificationPriority.DEFAULT,
@@ -63,7 +66,7 @@ export const configureNotificationChannels = async () => {
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_SOUND, {
     name: "Siply reminders",
     importance: Notifications.AndroidImportance.HIGH,
-    sound: "default",
+    sound: NOTIFICATION_SOUND,
     enableVibrate: true,
     vibrationPattern: [0, 250, 250, 250],
     enableLights: true,
@@ -83,6 +86,19 @@ export const configureNotificationChannels = async () => {
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     showBadge: false,
   });
+};
+
+const ensureNotificationChannels = async () => {
+  if (Platform.OS !== "android") {
+    return;
+  }
+  if (!channelsReady) {
+    channelsReady = configureNotificationChannels().catch((error) => {
+      channelsReady = null;
+      throw error;
+    });
+  }
+  await channelsReady;
 };
 
 export const configureNotificationActions = async () => {
@@ -115,6 +131,20 @@ export const scheduleNotifications = async (
       failed: 0,
       errors: ["Invalid settings provided to scheduleNotifications."],
     };
+  }
+
+  if (Platform.OS === "android") {
+    try {
+      await ensureNotificationChannels();
+    } catch (error) {
+      return {
+        success: false,
+        requested: 0,
+        scheduled: 0,
+        failed: 0,
+        errors: [error instanceof Error ? error.message : "Failed to configure notification channels."],
+      };
+    }
   }
 
   let schedule;
@@ -246,15 +276,34 @@ export const rescheduleNotifications = async (
 };
 
 export const sendTestNotification = async () => {
-  const channelId = getChannelId(true);
-  const triggerDate = new Date(Date.now() + 1000);
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      ...buildContent("Test reminder: Drink 200 ml (13 sips)", true, {
-        forceSound: true,
-        ml: 200,
-      }),
-    },
-    trigger: buildTrigger(triggerDate, channelId),
-  });
+  try {
+    const permissions = await Notifications.getPermissionsAsync();
+    if (!permissions.granted) {
+      if (permissions.canAskAgain) {
+        const requested = await Notifications.requestPermissionsAsync();
+        if (!requested.granted) {
+          console.warn("Siply: notifications permission not granted.");
+          return;
+        }
+      } else {
+        console.warn("Siply: notifications permission is denied.");
+        return;
+      }
+    }
+
+    await ensureNotificationChannels();
+    const channelId = getChannelId(true);
+    const triggerDate = new Date(Date.now() + 1000);
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        ...buildContent("Test reminder: Drink 200 ml (13 sips)", true, {
+          forceSound: true,
+          ml: 200,
+        }),
+      },
+      trigger: buildTrigger(triggerDate, channelId),
+    });
+  } catch (error) {
+    console.warn("Siply: failed to schedule test notification", error);
+  }
 };

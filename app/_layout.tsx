@@ -1,7 +1,9 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import { ThemeProvider } from "../src/shared/theme/ThemeProvider";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -16,10 +18,30 @@ import {
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
 import { NOTIFICATION_ACTION_LOG } from "../src/core/constants";
 import { darkColors, lightColors } from "../src/shared/theme/tokens";
+import { useTheme } from "../src/shared/theme/ThemeProvider";
+
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+const HANDLED_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
+const handledNotificationActions = new Map<string, number>();
+
+const markNotificationHandled = (notificationId: string) => {
+  const now = Date.now();
+  handledNotificationActions.set(notificationId, now);
+  if (handledNotificationActions.size <= 50) {
+    return;
+  }
+  for (const [id, timestamp] of handledNotificationActions) {
+    if (now - timestamp > HANDLED_ACTION_TTL_MS) {
+      handledNotificationActions.delete(id);
+    }
+  }
+};
 
 const RootLayoutNav = () => {
   const router = useRouter();
   const segments = useSegments();
+  const theme = useTheme();
   const {
     settings,
     onboarding,
@@ -28,6 +50,12 @@ const RootLayoutNav = () => {
     progress,
     addConsumed,
   } = useHydration();
+  const [routeReady, setRouteReady] = useState(false);
+
+  const expectedRoot = useMemo(
+    () => (onboarding.completed ? "(tabs)" : "(onboarding)"),
+    [onboarding.completed]
+  );
   const ensureNotificationPermission = React.useCallback(async () => {
     const status = await Notifications.getPermissionsAsync();
     if (status.granted) {
@@ -61,15 +89,21 @@ const RootLayoutNav = () => {
 
   useEffect(() => {
     if (!hydrated) {
+      setRouteReady(false);
       return;
     }
-    const inOnboarding = segments[0] === "(onboarding)";
-    if (!onboarding.completed && !inOnboarding) {
-      router.replace("/(onboarding)");
-    } else if (onboarding.completed && inOnboarding) {
-      router.replace("/(tabs)");
+    const rootSegment = segments[0];
+    if (!rootSegment) {
+      setRouteReady(false);
+      return;
     }
-  }, [hydrated, onboarding.completed, router, segments]);
+    if (rootSegment !== expectedRoot) {
+      setRouteReady(false);
+      router.replace(expectedRoot === "(tabs)" ? "/(tabs)" : "/(onboarding)");
+      return;
+    }
+    setRouteReady(true);
+  }, [expectedRoot, hydrated, router, segments]);
 
   useEffect(() => {
     if (!hydrated || !onboarding.completed) {
@@ -97,6 +131,15 @@ const RootLayoutNav = () => {
         if (response.actionIdentifier !== NOTIFICATION_ACTION_LOG) {
           return;
         }
+        const notificationId = response.notification.request.identifier;
+        if (notificationId) {
+          if (handledNotificationActions.has(notificationId)) {
+            void Notifications.dismissNotificationAsync(notificationId);
+            return;
+          }
+          markNotificationHandled(notificationId);
+          void Notifications.dismissNotificationAsync(notificationId);
+        }
         const payload = response.notification.request.content.data?.ml;
         const amount =
           typeof payload === "number"
@@ -121,7 +164,26 @@ const RootLayoutNav = () => {
     }
   });
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  const showLoader = !hydrated || !routeReady;
+
+  useEffect(() => {
+    if (!showLoader) {
+      void SplashScreen.hideAsync();
+    }
+  }, [showLoader]);
+
+  return (
+    <View style={styles.root}>
+      <View style={[styles.stackContainer, showLoader && styles.stackHidden]}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </View>
+      {showLoader ? (
+        <View style={[styles.loader, { backgroundColor: theme.colors.background }]}>
+          <ActivityIndicator color={theme.colors.textSecondary} />
+        </View>
+      ) : null}
+    </View>
+  );
 };
 
 const AppShell = () => {
@@ -146,3 +208,25 @@ export default function RootLayout() {
     </HydrationProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  stackContainer: {
+    flex: 1,
+  },
+  stackHidden: {
+    opacity: 0,
+  },
+  loader: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

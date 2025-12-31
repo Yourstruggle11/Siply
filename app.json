@@ -23,13 +23,24 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.yourstruggle11.siply"
+      "package": "com.yourstruggle11.siply",
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/siply_reminder.wav"
+          ]
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-build-properties",
