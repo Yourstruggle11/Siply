@@ -19,6 +19,17 @@ drink water, on time.
 - Notifications include an "I drank" action to log a dose without opening the app.
 - The action is de-duplicated per notification and dismisses the alert immediately.
 
+## System behavior (what to expect)
+- Reminders are scheduled only within the active window and are recalculated on launch/foreground and after settings or progress changes.
+- Reminder size is automatic: the remaining target is divided across remaining reminders, sips are derived from your sip size.
+- If the daily target is already met, no reminders are scheduled for that day.
+- If notifications are disabled, the app shows a warning and reminders will not fire.
+- If nudges are enabled, they are sent at +5 and +10 minutes after each reminder.
+- If actual behavior differs from this section, treat it as a bug and report it.
+
+Example:
+- Target 3.0 L, window 07:00-23:00, sip size 15 ml. If you open the app at 10:10 with 0 ml consumed, the next reminder will be the next scheduled slot in the window and will display roughly 200 ml (about 13 sips). If you log 300 ml at 14:00, later reminders adjust so the remaining amount is spread across the rest of the window.
+
 ## Key features
 - Quick Log presets (editable cup sizes) with optional last-used highlight and haptics.
 - Gentle goals and streaks (current/best, 7d/30d hits).
