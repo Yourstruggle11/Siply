@@ -123,8 +123,19 @@ export const computeReminderSchedule = (
       continue;
     }
 
-    let start = isCurrent ? addMinutes(now, plan.intervalMinutes) : window.start;
-    let times = buildWindowTimes(start, window.end, plan.intervalMinutes, remainingCapacity);
+    const windowDurationMinutes = Math.max(
+      0,
+      Math.ceil((window.end.getTime() - window.start.getTime()) / 60000)
+    );
+    const maxWindowSlots = Math.max(1, Math.ceil(windowDurationMinutes / plan.intervalMinutes));
+    const plannedTimes = buildWindowTimes(
+      window.start,
+      window.end,
+      plan.intervalMinutes,
+      maxWindowSlots
+    );
+    const futureTimes = plannedTimes.filter((time) => time > now);
+    const times = futureTimes.slice(0, remainingCapacity);
 
     if (isCurrent && times.length === 0 && windowMinutes > 0) {
       const immediate = addMinutes(now, 1);
@@ -139,8 +150,11 @@ export const computeReminderSchedule = (
       }
       continue;
     }
-
-    slots.push(...buildSlots(times, plan.mlPerReminder, plan.intervalMinutes, settings.sipMl));
+    if (!times.length) {
+      continue;
+    }
+    const mlPerReminder = Math.max(1, Math.round(remainingMl / times.length));
+    slots.push(...buildSlots(times, mlPerReminder, plan.intervalMinutes, settings.sipMl));
   }
 
   const deduped: ReminderSlot[] = [];
