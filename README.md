@@ -42,6 +42,13 @@ Notes:
 - iOS internal builds require an Apple Developer account and registered device UDIDs.
 - Android release size is optimized with Proguard/resource shrinking (see `app.json`).
 
+## Diagnostics panel (feature flag)
+- Disabled by default. Enable with `EXPO_PUBLIC_SIPLY_DIAGNOSTICS=1` (or `true`).
+- Local dev: set the env var (for example in `.env`) and restart `npm start`.
+- EAS Build: set it in the EAS dashboard or under `env` in `eas.json`.
+- Env changes do not affect already-installed builds; rebuild or publish an EAS Update to apply.
+- When enabled, Settings shows a Notification diagnostics panel with export.
+
 ## Limitations
 - Notifications cannot override Silent mode or Do Not Disturb.
 - Android may delay or coalesce reminders under battery optimization.

@@ -14,6 +14,7 @@ import {
   configureNotificationChannels,
   configureNotificationActions,
   rescheduleNotifications,
+  parseSiplyNotificationId,
 } from "../src/features/hydration/notifications/notifier";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
 import { NOTIFICATION_ACTION_LOG } from "../src/core/constants";
@@ -24,6 +25,18 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const HANDLED_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
 const handledNotificationActions = new Map<string, number>();
+
+const parseMlFromBody = (body?: string | null) => {
+  if (!body) {
+    return undefined;
+  }
+  const match = body.match(/~?(\d+)\s*ml/i);
+  if (!match) {
+    return undefined;
+  }
+  const value = Number.parseInt(match[1], 10);
+  return Number.isFinite(value) ? value : undefined;
+};
 
 const markNotificationHandled = (notificationId: string) => {
   const now = Date.now();
@@ -75,8 +88,8 @@ const RootLayoutNav = () => {
   useEffect(() => {
     Notifications.setNotificationHandler({
       handleNotification: async (notification) => {
-        const forceSound =
-          notification.request.content.data?.forceSound === true;
+        const meta = parseSiplyNotificationId(notification.request.identifier);
+        const forceSound = meta?.kind === "test";
         return {
           shouldShowBanner: true,
           shouldShowList: true,
@@ -140,12 +153,9 @@ const RootLayoutNav = () => {
           markNotificationHandled(notificationId);
           void Notifications.dismissNotificationAsync(notificationId);
         }
-        const payload = response.notification.request.content.data?.ml;
-        const amount =
-          typeof payload === "number"
-            ? payload
-            : Number.parseInt(typeof payload === "string" ? payload : "", 10);
-        if (Number.isFinite(amount) && amount > 0) {
+        const meta = parseSiplyNotificationId(notificationId);
+        const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
+        if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
           void addConsumed(amount);
         }
       }

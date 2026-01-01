@@ -10,12 +10,30 @@ import {
 import { addMinutes } from "../../../core/time";
 import { computeReminderSchedule } from "../domain/schedule";
 import { HydrationSettings } from "../domain/types";
+import { recordScheduleDiagnostics, recordTestDiagnostics } from "./diagnostics";
 
 const ANDROID_CHANNEL_SOUND = "siply-reminders-sound";
 const ANDROID_CHANNEL_SILENT = "siply-reminders-silent";
 let channelsReady: Promise<void> | null = null;
 const NOTIFICATION_SOUND =
   Platform.OS === "android" ? "siply_reminder" : "siply_reminder.wav";
+const NOTIFICATION_ID_PREFIX = "siply";
+
+type SiplyNotificationKind = "reminder" | "nudge" | "test";
+
+const getContentSound = (soundEnabled: boolean) => {
+  if (!soundEnabled) {
+    return undefined;
+  }
+  if (Platform.OS === "ios") {
+    return NOTIFICATION_SOUND;
+  }
+  // Android sound is controlled by the channel, avoid per-notification sound payload.
+  if (Platform.OS === "android" && typeof Platform.Version === "number" && Platform.Version < 26) {
+    return NOTIFICATION_SOUND;
+  }
+  return undefined;
+};
 
 const formatReminderBody = (ml: number, sips: number) => `Drink ~${ml} ml (${sips} sips)`;
 const formatNudgeBody = (ml: number, sips: number) => `Reminder: ~${ml} ml (${sips} sips)`;
@@ -32,17 +50,47 @@ type NotificationScheduleResult = {
   errors: string[];
 };
 
-const buildContent = (body: string, soundEnabled: boolean, data?: Record<string, unknown>) => ({
-  title: APP_NAME,
-  body,
-  sound: soundEnabled ? NOTIFICATION_SOUND : undefined,
-  priority: soundEnabled
-    ? Notifications.AndroidNotificationPriority.HIGH
-    : Notifications.AndroidNotificationPriority.DEFAULT,
-  vibrate: soundEnabled ? [0, 250, 250, 250] : undefined,
-  categoryIdentifier: NOTIFICATION_CATEGORY_ID,
-  data,
-});
+const buildContent = (body: string, soundEnabled: boolean) => {
+  const contentSound = getContentSound(soundEnabled);
+  return {
+    title: APP_NAME,
+    body,
+    ...(contentSound ? { sound: contentSound } : {}),
+    priority: soundEnabled
+      ? Notifications.AndroidNotificationPriority.HIGH
+      : Notifications.AndroidNotificationPriority.DEFAULT,
+    vibrate: soundEnabled ? [0, 250, 250, 250] : undefined,
+    categoryIdentifier: NOTIFICATION_CATEGORY_ID,
+  };
+};
+
+const buildNotificationId = (kind: SiplyNotificationKind, time: Date, ml?: number, offset?: number) => {
+  const parts = [NOTIFICATION_ID_PREFIX, kind, String(time.getTime())];
+  if (typeof ml === "number" && Number.isFinite(ml)) {
+    parts.push(String(Math.round(ml)));
+  }
+  if (typeof offset === "number" && Number.isFinite(offset)) {
+    parts.push(String(offset));
+  }
+  return parts.join(":");
+};
+
+export const parseSiplyNotificationId = (identifier?: string) => {
+  if (!identifier) {
+    return null;
+  }
+  const parts = identifier.split(":");
+  if (parts.length < 2 || parts[0] !== NOTIFICATION_ID_PREFIX) {
+    return null;
+  }
+  const kind = parts[1] as SiplyNotificationKind;
+  if (kind !== "reminder" && kind !== "nudge" && kind !== "test") {
+    return null;
+  }
+  const mlRaw = parts.length >= 4 ? Number.parseInt(parts[3], 10) : NaN;
+  const ml = Number.isFinite(mlRaw) ? mlRaw : undefined;
+  return { kind, ml };
+};
 
 const buildTrigger = (
   date: Date,
@@ -185,11 +233,11 @@ export const scheduleNotifications = async (
     }
     const content = buildContent(
       formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder),
-      settings.soundEnabled,
-      { ml: slot.mlPerReminder }
+      settings.soundEnabled
     );
     requests.push(
       Notifications.scheduleNotificationAsync({
+        identifier: buildNotificationId("reminder", slot.time, slot.mlPerReminder),
         content,
         trigger: buildTrigger(slot.time, channelId),
       })
@@ -204,12 +252,12 @@ export const scheduleNotifications = async (
         }
         requests.push(
           Notifications.scheduleNotificationAsync({
+            identifier: buildNotificationId("nudge", nudgeTime, slot.mlPerReminder, offset),
             content: buildContent(
               offset === NUDGE_MINUTES[0]
                 ? formatNudgeBody(slot.mlPerReminder, slot.sipsPerReminder)
                 : formatFinalNudgeBody(slot.mlPerReminder),
-              settings.soundEnabled,
-              { ml: slot.mlPerReminder }
+              settings.soundEnabled
             ),
             trigger: buildTrigger(nudgeTime, channelId),
           })
@@ -268,6 +316,26 @@ export const rescheduleNotifications = async (
   }
 
   const result = await scheduleNotifications(settings, consumedMl, now);
+  void recordScheduleDiagnostics({
+    source: "reschedule",
+    at: new Date().toISOString(),
+    consumedMl,
+    settings: {
+      targetLiters: settings.targetLiters,
+      windowStart: settings.windowStart,
+      windowEnd: settings.windowEnd,
+      sipMl: settings.sipMl,
+      escalationEnabled: settings.escalationEnabled,
+      soundEnabled: settings.soundEnabled,
+    },
+    result: {
+      success: result.success,
+      requested: result.requested,
+      scheduled: result.scheduled,
+      failed: result.failed,
+      errors: result.errors,
+    },
+  });
   return {
     ...result,
     errors: [...errors, ...result.errors],
@@ -296,14 +364,21 @@ export const sendTestNotification = async () => {
     const triggerDate = new Date(Date.now() + 1000);
     await Notifications.scheduleNotificationAsync({
       content: {
-        ...buildContent("Test reminder: Drink 200 ml (13 sips)", true, {
-          forceSound: true,
-          ml: 200,
-        }),
+        ...buildContent("Test reminder: Drink 200 ml (13 sips)", true),
       },
+      identifier: buildNotificationId("test", triggerDate),
       trigger: buildTrigger(triggerDate, channelId),
+    });
+    void recordTestDiagnostics({
+      at: new Date().toISOString(),
+      success: true,
     });
   } catch (error) {
     console.warn("Siply: failed to schedule test notification", error);
+    void recordTestDiagnostics({
+      at: new Date().toISOString(),
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 };

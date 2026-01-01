@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
 import { Screen } from "../../src/shared/components/Screen";
 import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
 import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
@@ -10,6 +12,7 @@ import { PrimaryButton } from "../../src/features/hydration/ui/components/Primar
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import {
   MAX_NOTIFICATIONS_PER_DAY,
+  ENABLE_DIAGNOSTICS,
   MIN_INTERVAL_MINUTES,
   NUDGE_MINUTES,
   QUICK_LOG_MAX_PRESETS,
@@ -25,6 +28,11 @@ import {
   rescheduleNotifications,
   sendTestNotification,
 } from "../../src/features/hydration/notifications/notifier";
+import {
+  clearNotificationDiagnostics,
+  loadNotificationDiagnostics,
+  NotificationDiagnosticsState,
+} from "../../src/features/hydration/notifications/diagnostics";
 import {
   computeAutoPlan,
   computeSipsPerReminder,
@@ -54,6 +62,15 @@ export default function SettingsScreen() {
   const [calcActivity, setCalcActivity] = useState<"low" | "medium" | "high">("low");
   const [calcClimateHot, setCalcClimateHot] = useState(false);
   const { permission, requestPermission, openSettings } = useNotificationPermission();
+  const [diagnostics, setDiagnostics] = useState<NotificationDiagnosticsState | null>(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [permissionsSnapshot, setPermissionsSnapshot] =
+    useState<Notifications.NotificationPermissionsStatus | null>(null);
+  const [channels, setChannels] = useState<Notifications.NotificationChannel[] | null>(null);
+  const [scheduledCount, setScheduledCount] = useState(0);
+  const [scheduledNext, setScheduledNext] = useState<string[]>([]);
 
   useEffect(() => {
     setDraft({
@@ -69,6 +86,129 @@ export default function SettingsScreen() {
     });
   }, [settings]);
 
+  const formatTimestamp = (value?: string) => {
+    if (!value) {
+      return "Never";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString();
+  };
+
+  const refreshDiagnostics = async () => {
+    setDiagnosticLoading(true);
+    try {
+      const [permissionsState, scheduled, stored] = await Promise.all([
+        Notifications.getPermissionsAsync(),
+        Notifications.getAllScheduledNotificationsAsync(),
+        loadNotificationDiagnostics(),
+      ]);
+      setPermissionsSnapshot(permissionsState);
+      setDiagnostics(stored);
+
+      const dates = scheduled
+        .map((item) => {
+          const trigger = item.trigger as { date?: string | number | Date } | null;
+          if (!trigger || trigger.date === undefined || trigger.date === null) {
+            return null;
+          }
+          const date = new Date(trigger.date);
+          return Number.isNaN(date.getTime()) ? null : date;
+        })
+        .filter((value): value is Date => value !== null)
+        .sort((a, b) => a.getTime() - b.getTime());
+
+      setScheduledCount(scheduled.length);
+      setScheduledNext(dates.slice(0, 5).map((date) => date.toLocaleString()));
+
+      if (Platform.OS === "android") {
+        const channelList = await Notifications.getNotificationChannelsAsync();
+        setChannels(channelList ?? []);
+      } else {
+        setChannels(null);
+      }
+    } finally {
+      setDiagnosticLoading(false);
+    }
+  };
+
+  const buildDiagnosticsExport = () => {
+    const lines: string[] = [];
+    lines.push("Siply notification diagnostics");
+    lines.push(`Generated: ${new Date().toISOString()}`);
+    lines.push(`App ownership: ${Constants.appOwnership ?? "unknown"}`);
+    lines.push(`Platform: ${Platform.OS} ${Platform.Version}`);
+    lines.push(
+      `Build version: ${Constants.nativeAppVersion ?? "unknown"} (${Constants.nativeBuildVersion ?? "n/a"})`
+    );
+    if (permissionsSnapshot) {
+      lines.push(
+        `Permissions: status=${permissionsSnapshot.status} granted=${
+          permissionsSnapshot.granted ? "yes" : "no"
+        } canAskAgain=${permissionsSnapshot.canAskAgain ? "yes" : "no"}`
+      );
+      lines.push(`Permissions raw: ${JSON.stringify(permissionsSnapshot)}`);
+    } else {
+      lines.push("Permissions: unknown");
+    }
+    lines.push(`Scheduled count: ${scheduledCount}`);
+    if (scheduledNext.length) {
+      lines.push(`Next reminders: ${scheduledNext.join(" | ")}`);
+    }
+    if (diagnostics?.lastSchedule) {
+      lines.push(`Last reschedule: ${diagnostics.lastSchedule.at}`);
+      lines.push(
+        `Reschedule result: requested=${diagnostics.lastSchedule.result.requested} scheduled=${diagnostics.lastSchedule.result.scheduled} failed=${diagnostics.lastSchedule.result.failed}`
+      );
+      if (diagnostics.lastSchedule.result.errors.length) {
+        lines.push(`Reschedule errors: ${diagnostics.lastSchedule.result.errors.join(" | ")}`);
+      }
+    }
+    if (diagnostics?.lastTest) {
+      lines.push(
+        `Last test: ${diagnostics.lastTest.at} success=${diagnostics.lastTest.success ? "yes" : "no"}`
+      );
+      if (diagnostics.lastTest.error) {
+        lines.push(`Test error: ${diagnostics.lastTest.error}`);
+      }
+    }
+    if (channels && channels.length) {
+      lines.push("Android channels:");
+      channels.forEach((channel) => {
+        lines.push(
+          `- ${channel.id} | importance=${channel.importance} | sound=${channel.sound ?? "none"} | vibrate=${
+            channel.enableVibrate ? "yes" : "no"
+          }`
+        );
+      });
+    }
+    return lines.join("\n");
+  };
+
+  const handleExportDiagnostics = async () => {
+    if (exporting) {
+      return;
+    }
+    setExporting(true);
+    setExportStatus(null);
+    const payload = buildDiagnosticsExport();
+    try {
+      await Share.share({ message: payload });
+      setExportStatus("Opened share sheet. Use Copy to clipboard if needed.");
+    } catch {
+      setExportStatus("Failed to export diagnostics.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (ENABLE_DIAGNOSTICS) {
+      void refreshDiagnostics();
+    }
+  }, []);
 
   const normalizedSettings = useMemo(() => {
     const parsedTarget = Number.parseFloat(draft.target);
@@ -485,6 +625,165 @@ export default function SettingsScreen() {
             />
           </View>
         </AnimatedCard>
+
+        {ENABLE_DIAGNOSTICS ? (
+          <AnimatedCard style={styles.section} delay={460}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+              Notification diagnostics
+            </Text>
+            <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+              Use this panel to verify permissions, channels, and scheduled reminders.
+            </Text>
+            <View style={styles.diagnosticGroup}>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  App ownership
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {Constants.appOwnership ?? "unknown"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Platform
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {Platform.OS} {String(Platform.Version)}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Build version
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {Constants.nativeAppVersion ?? "unknown"} ({Constants.nativeBuildVersion ?? "n/a"})
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Permissions
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {permissionsSnapshot
+                    ? `${permissionsSnapshot.status} | granted=${permissionsSnapshot.granted ? "yes" : "no"}`
+                    : "unknown"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Can ask again
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {permissionsSnapshot ? (permissionsSnapshot.canAskAgain ? "yes" : "no") : "unknown"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Scheduled count
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {scheduledCount}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Next reminders
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {scheduledNext.length ? scheduledNext.join(" | ") : "none"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Last reschedule
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {formatTimestamp(diagnostics?.lastSchedule?.at)}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Last reschedule result
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {diagnostics?.lastSchedule
+                    ? `requested=${diagnostics.lastSchedule.result.requested} scheduled=${diagnostics.lastSchedule.result.scheduled} failed=${diagnostics.lastSchedule.result.failed}`
+                    : "none"}
+                </Text>
+              </View>
+              {diagnostics?.lastSchedule?.result.errors?.length ? (
+                <Text style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                  Errors: {diagnostics.lastSchedule.result.errors.join(" | ")}
+                </Text>
+              ) : null}
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                  Last test
+                </Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {diagnostics?.lastTest
+                    ? `${formatTimestamp(diagnostics.lastTest.at)} | success=${
+                        diagnostics.lastTest.success ? "yes" : "no"
+                      }`
+                    : "none"}
+                </Text>
+              </View>
+              {diagnostics?.lastTest?.error ? (
+                <Text style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                  Test error: {diagnostics.lastTest.error}
+                </Text>
+              ) : null}
+              {channels && channels.length ? (
+                <View style={styles.diagnosticSection}>
+                  <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>
+                    Android channels
+                  </Text>
+                  {channels.map((channel) => (
+                    <Text
+                      key={`channel-${channel.id}`}
+                      style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}
+                    >
+                      {channel.id} | importance={channel.importance} | sound={channel.sound ?? "none"} | vibrate=
+                      {channel.enableVibrate ? "yes" : "no"}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              {permissionsSnapshot ? (
+                <Text style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                  Raw permissions: {JSON.stringify(permissionsSnapshot)}
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.diagnosticActions}>
+              <PrimaryButton
+                label={diagnosticLoading ? "Refreshing..." : "Refresh diagnostics"}
+                variant="secondary"
+                onPress={refreshDiagnostics}
+              />
+              <PrimaryButton
+                label={exporting ? "Exporting..." : "Export diagnostics"}
+                variant="secondary"
+                onPress={handleExportDiagnostics}
+              />
+              <PrimaryButton
+                label="Clear diagnostics"
+                variant="secondary"
+                onPress={async () => {
+                  await clearNotificationDiagnostics();
+                  setDiagnostics(null);
+                  setScheduledCount(0);
+                  setScheduledNext([]);
+                }}
+              />
+            </View>
+            {exportStatus ? (
+              <Text style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                {exportStatus}
+              </Text>
+            ) : null}
+          </AnimatedCard>
+        ) : null}
       </View>
     </Screen>
   );
@@ -589,5 +888,34 @@ const styles = StyleSheet.create({
   },
   actionGroup: {
     gap: 10,
+  },
+  diagnosticGroup: {
+    gap: 8,
+  },
+  diagnosticRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  diagnosticLabel: {
+    fontSize: 12,
+    flex: 1,
+  },
+  diagnosticValue: {
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+    flex: 1,
+  },
+  diagnosticDetail: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  diagnosticSection: {
+    gap: 6,
+  },
+  diagnosticActions: {
+    gap: 10,
+    marginTop: 4,
   },
 });

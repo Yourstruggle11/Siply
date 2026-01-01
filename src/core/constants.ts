@@ -16,6 +16,9 @@ export const DEFAULT_QUICK_LOG_PRESETS = [100, 200, 250, 500];
 export const QUICK_LOG_MIN_PRESETS = 3;
 export const QUICK_LOG_MAX_PRESETS = 8;
 export const HISTORY_RETENTION_DAYS = 120;
+export const ENABLE_DIAGNOSTICS =
+  process.env.EXPO_PUBLIC_SIPLY_DIAGNOSTICS === "1" ||
+  process.env.EXPO_PUBLIC_SIPLY_DIAGNOSTICS === "true";
 
 export const DEFAULT_SETTINGS: HydrationSettings = {
   targetLiters: 3.0,
