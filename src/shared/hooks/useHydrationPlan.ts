@@ -1,43 +1,33 @@
 import { useMemo } from "react";
 import {
-  MAX_NOTIFICATIONS_PER_DAY,
-  MIN_INTERVAL_MINUTES,
-  NUDGE_MINUTES,
   REMINDER_TARGET_ML,
 } from "../../core/constants";
 import {
-  computeAutoPlan,
+  computeHydrationPlan,
   computeSipsPerReminder,
-  getWindowMinutes,
   litersToMl,
 } from "../../features/hydration/domain/calculations";
+import { HydrationPlan } from "../../features/hydration/domain/types";
 import { computeReminderSchedule } from "../../features/hydration/domain/schedule";
-import { useHydration } from "../../features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../features/hydration/state/hydrationStore";
 
-export const useHydrationPlan = () => {
-  const { settings, progress } = useHydration();
+export const useHydrationPlan = (): HydrationPlan => {
+  const settings = useHydrationStore((s) => s.settings);
+  const progress = useHydrationStore((s) => s.progress);
 
-  return useMemo(() => {
+  return useMemo((): HydrationPlan => {
     const now = new Date();
     const targetMl = litersToMl(settings.targetLiters);
     const schedule = computeReminderSchedule(now, settings, progress.consumedMl);
     const nextSlot = schedule.slots[0] ?? null;
-    const factor = settings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
-    const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
-    const fallbackPlan = computeAutoPlan({
-      remainingMl: Math.max(targetMl - progress.consumedMl, 0),
-      windowMinutes: getWindowMinutes(settings),
-      minIntervalMinutes: MIN_INTERVAL_MINUTES,
-      maxReminders: maxBase,
-      desiredReminderMl: REMINDER_TARGET_ML,
-    });
+    const remainingMl = Math.max(0, targetMl - progress.consumedMl);
+    const fallbackPlan = computeHydrationPlan(settings, remainingMl);
     const fallbackMl = fallbackPlan?.mlPerReminder ?? REMINDER_TARGET_ML;
     const fallbackSips = computeSipsPerReminder(fallbackMl, settings.sipMl);
     const mlPerReminder = nextSlot?.mlPerReminder ?? fallbackMl;
     const sipsPerReminder = nextSlot?.sipsPerReminder ?? fallbackSips;
     const nextReminderAt = nextSlot?.time ?? null;
     const remindersPerDay = fallbackPlan?.reminders ?? schedule.slots.length;
-    const remainingMl = Math.max(0, targetMl - progress.consumedMl);
 
     return {
       targetMl,

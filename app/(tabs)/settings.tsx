@@ -11,17 +11,15 @@ import { ToggleRow } from "../../src/shared/components/ToggleRow";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import {
-  MAX_NOTIFICATIONS_PER_DAY,
   ENABLE_DIAGNOSTICS,
   MIN_INTERVAL_MINUTES,
-  NUDGE_MINUTES,
   QUICK_LOG_MAX_PRESETS,
   QUICK_LOG_MIN_PRESETS,
   REMINDER_TARGET_ML,
   TAGLINE,
 } from "../../src/core/constants";
 import { parseTimeToMinutes } from "../../src/core/time";
-import { useHydration } from "../../src/features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
 import {
   cancelAllNotifications,
@@ -34,7 +32,7 @@ import {
   NotificationDiagnosticsState,
 } from "../../src/features/hydration/notifications/diagnostics";
 import {
-  computeAutoPlan,
+  computeHydrationPlan,
   computeSipsPerReminder,
   getWindowMinutes,
   litersToMl,
@@ -42,8 +40,9 @@ import {
 
 export default function SettingsScreen() {
   const theme = useTheme();
-  const { settings, updateSettings, resetToday, progress, quickLog, updateQuickLogPresets } =
-    useHydration();
+  const settings = useHydrationStore((s) => s.settings);
+  const updateSettings = useHydrationStore((s) => s.updateSettings);
+  const updateQuickLogPresets = useHydrationStore((s) => s.updateQuickLogPresets);
 
   const [draft, setDraft] = useState(() => ({
     target: settings.targetLiters.toFixed(1),
@@ -241,16 +240,7 @@ export default function SettingsScreen() {
 
   const previewPlan = useMemo(() => {
     const targetMl = litersToMl(normalizedSettings.targetLiters);
-    const windowMinutes = getWindowMinutes(normalizedSettings);
-    const factor = normalizedSettings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
-    const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
-    return computeAutoPlan({
-      remainingMl: targetMl,
-      windowMinutes,
-      minIntervalMinutes: MIN_INTERVAL_MINUTES,
-      maxReminders: maxBase,
-      desiredReminderMl: REMINDER_TARGET_ML,
-    });
+    return computeHydrationPlan(normalizedSettings, targetMl);
   }, [normalizedSettings]);
 
   const previewMl = previewPlan?.mlPerReminder ?? REMINDER_TARGET_ML;

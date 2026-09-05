@@ -40,7 +40,7 @@ const toTimeString = (value: unknown, fallback: string) => {
 const toAppearanceMode = (value: unknown, fallback: "light" | "dark") =>
   value === "light" || value === "dark" ? value : fallback;
 
-const normalizeSettings = (input: Partial<HydrationSettings> | null): HydrationSettings => {
+export const normalizeSettings = (input: Partial<HydrationSettings> | null): HydrationSettings => {
   const base = input ?? {};
   return {
     targetLiters: toNumber(base.targetLiters, DEFAULT_SETTINGS.targetLiters),
@@ -55,7 +55,7 @@ const normalizeSettings = (input: Partial<HydrationSettings> | null): HydrationS
   };
 };
 
-const normalizeProgress = (input: HydrationProgress | null, todayKey: string): HydrationProgress => {
+export const normalizeProgress = (input: HydrationProgress | null, todayKey: string): HydrationProgress => {
   if (!input || input.date !== todayKey) {
     return { date: todayKey, consumedMl: 0 };
   }
@@ -65,11 +65,11 @@ const normalizeProgress = (input: HydrationProgress | null, todayKey: string): H
   };
 };
 
-const normalizeOnboarding = (input: OnboardingState | null): OnboardingState => ({
+export const normalizeOnboarding = (input: OnboardingState | null): OnboardingState => ({
   completed: toBoolean(input?.completed, false),
 });
 
-const normalizeQuickLog = (input: unknown): QuickLogState => {
+export const normalizeQuickLog = (input: unknown): QuickLogState => {
   const presets = normalizeQuickLogPresets(input, DEFAULT_QUICK_LOG_PRESETS);
   const lastUsedValue = (input as { lastUsedMl?: unknown })?.lastUsedMl;
   const lastUsed = typeof lastUsedValue === "number" && Number.isFinite(lastUsedValue)

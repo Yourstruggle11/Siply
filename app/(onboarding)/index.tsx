@@ -6,12 +6,13 @@ import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { TAGLINE, DEFAULT_SETTINGS } from "../../src/core/constants";
-import { useHydration } from "../../src/features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { updateSettings, completeOnboarding } = useHydration();
+  const updateSettings = useHydrationStore((s) => s.updateSettings);
+  const completeOnboarding = useHydrationStore((s) => s.completeOnboarding);
 
   const handleSkip = async () => {
     await updateSettings(DEFAULT_SETTINGS);

@@ -8,8 +8,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { ThemeProvider } from "../src/shared/theme/ThemeProvider";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
-  HydrationProvider,
-  useHydration,
+  useHydrationStore,
 } from "../src/features/hydration/state/hydrationStore";
 import {
   configureNotificationChannels,
@@ -88,14 +87,12 @@ const RootLayoutNav = () => {
   const router = useRouter();
   const segments = useSegments();
   const theme = useTheme();
-  const {
-    settings,
-    onboarding,
-    hydrated,
-    refreshProgressDate,
-    progress,
-    addConsumed,
-  } = useHydration();
+  const settings = useHydrationStore((s) => s.settings);
+  const onboarding = useHydrationStore((s) => s.onboarding);
+  const hydrated = useHydrationStore((s) => s.hydrated);
+  const refreshProgressDate = useHydrationStore((s) => s.refreshProgressDate);
+  const progress = useHydrationStore((s) => s.progress);
+  const addConsumed = useHydrationStore((s) => s.addConsumed);
   const [routeReady, setRouteReady] = useState(false);
 
   const expectedRoot = useMemo(
@@ -243,7 +240,7 @@ const RootLayoutNav = () => {
 };
 
 const AppShell = () => {
-  const { settings } = useHydration();
+  const settings = useHydrationStore((s) => s.settings);
   const isDark = settings.appearanceMode === "dark";
   const statusBarStyle = isDark ? "light" : "dark";
   const statusBarBackground = isDark ? darkColors.background : lightColors.background;
@@ -258,11 +255,7 @@ const AppShell = () => {
 };
 
 export default function RootLayout() {
-  return (
-    <HydrationProvider>
-      <AppShell />
-    </HydrationProvider>
-  );
+  return <AppShell />;
 }
 
 const styles = StyleSheet.create({

@@ -72,6 +72,7 @@ export const darkColors = {
 };
 
 export type Theme = {
+  mode: "light" | "dark";
   colors: typeof lightColors;
   spacing: typeof spacing;
   radius: typeof radius;
@@ -79,6 +80,7 @@ export type Theme = {
 };
 
 export const lightTheme: Theme = {
+  mode: "light",
   colors: lightColors,
   spacing,
   radius,
@@ -86,6 +88,7 @@ export const lightTheme: Theme = {
 };
 
 export const darkTheme: Theme = {
+  mode: "dark",
   colors: darkColors,
   spacing,
   radius,

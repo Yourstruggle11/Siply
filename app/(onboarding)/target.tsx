@@ -6,12 +6,14 @@ import { Field } from "../../src/shared/components/Field";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { DEFAULT_SETTINGS } from "../../src/core/constants";
-import { useHydration } from "../../src/features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 
 export default function TargetScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { settings, updateSettings, completeOnboarding } = useHydration();
+  const settings = useHydrationStore((s) => s.settings);
+  const updateSettings = useHydrationStore((s) => s.updateSettings);
+  const completeOnboarding = useHydrationStore((s) => s.completeOnboarding);
   const [target, setTarget] = useState(String(settings.targetLiters.toFixed(1)));
 
   const handleContinue = async () => {

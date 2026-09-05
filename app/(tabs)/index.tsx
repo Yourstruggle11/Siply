@@ -6,7 +6,7 @@ import { Field } from "../../src/shared/components/Field";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { ProgressRing } from "../../src/features/hydration/ui/components/ProgressRing";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
-import { useHydration } from "../../src/features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
 import { formatTimeForDisplay } from "../../src/core/time";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
@@ -20,7 +20,12 @@ interface MockLogEntry {
 
 export default function HomeScreen() {
   const theme = useTheme();
-  const { addConsumed, quickLog, progress: globalProgress, settings, history } = useHydration();
+  const addConsumed = useHydrationStore((s) => s.addConsumed);
+  const quickLog = useHydrationStore((s) => s.quickLog);
+  const globalProgress = useHydrationStore((s) => s.progress);
+  const settings = useHydrationStore((s) => s.settings);
+  const history = useHydrationStore((s) => s.history);
+  const undoLastLog = useHydrationStore((s) => s.undoLastLog);
   const { permission, requestPermission, openSettings } = useNotificationPermission();
   const requestedRef = useRef(false);
   const plan = useHydrationPlan();
@@ -54,8 +59,9 @@ export default function HomeScreen() {
       void triggerLightHaptic();
     }
 
+    const logId = Date.now().toString();
     setSessionLogs(prev => [
-      { id: Date.now().toString(), timestamp: new Date(), amount: amountMl },
+      { id: logId, timestamp: new Date(), amount: amountMl },
       ...prev,
     ]);
   };
@@ -72,9 +78,9 @@ export default function HomeScreen() {
     }
   };
 
-  const handleUndo = (id: string, amount: number) => {
+  const handleUndo = (id: string, amount: number, timestamp: Date) => {
+    void undoLastLog(amount, timestamp.getHours());
     setSessionLogs(prev => prev.filter(log => log.id !== id));
-    void addConsumed(-amount);
     void triggerLightHaptic();
   };
 
@@ -227,7 +233,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   {index === 0 && (
-                    <Pressable onPress={() => handleUndo(log.id, log.amount)} style={styles.undoButton}>
+                    <Pressable onPress={() => handleUndo(log.id, log.amount, log.timestamp)} style={styles.undoButton}>
                       <Text style={[{ color: theme.colors.accent, ...theme.typography.caption }]}>Undo</Text>
                     </Pressable>
                   )}

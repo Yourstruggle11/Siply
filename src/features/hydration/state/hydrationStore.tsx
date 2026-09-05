@@ -1,24 +1,38 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   DEFAULT_QUICK_LOG_PRESETS,
   DEFAULT_SETTINGS,
   QUICK_LOG_MAX_PRESETS,
   QUICK_LOG_MIN_PRESETS,
+  SCHEMA_VERSION,
 } from "../../../core/constants";
 import {
   hydrateStorage,
-  persistHistory,
-  persistOnboarding,
-  persistProgress,
-  persistQuickLog,
-  persistSettings,
+  normalizeOnboarding,
+  normalizeProgress,
+  normalizeQuickLog,
+  normalizeSettings,
 } from "../../../core/storage/migrations";
 import { getDateKey } from "../../../core/time";
 import { litersToMl } from "../domain/calculations";
-import { HydrationHistory, HydrationProgress, HydrationSettings, OnboardingState, QuickLogState } from "../domain/types";
-import { resetHistoryForDate, trimHistory, updateHistoryForLog } from "../domain/history";
+import {
+  HydrationHistory,
+  HydrationProgress,
+  HydrationSettings,
+  OnboardingState,
+  QuickLogState,
+} from "../domain/types";
+import {
+  resetHistoryForDate,
+  trimHistory,
+  updateHistoryForLog,
+  undoHistoryForLog,
+  normalizeHistory,
+} from "../domain/history";
 
-type HydrationState = {
+export type HydrationState = {
   settings: HydrationSettings;
   progress: HydrationProgress;
   onboarding: OnboardingState;
@@ -27,202 +41,178 @@ type HydrationState = {
   hydrated: boolean;
 };
 
-type HydrationAction =
-  | { type: "hydrate"; payload: Omit<HydrationState, "hydrated"> }
-  | { type: "setSettings"; payload: HydrationSettings }
-  | { type: "setProgress"; payload: HydrationProgress }
-  | { type: "setOnboarding"; payload: OnboardingState }
-  | { type: "setQuickLog"; payload: QuickLogState }
-  | { type: "setHistory"; payload: HydrationHistory };
-
-type HydrationContextValue = HydrationState & {
+type HydrationActions = {
   updateSettings: (patch: Partial<HydrationSettings>) => Promise<void>;
   addConsumed: (amountMl: number) => Promise<void>;
+  undoLastLog: (amountMl: number, hour: number) => Promise<void>;
   resetToday: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refreshProgressDate: () => Promise<boolean>;
   updateQuickLogPresets: (presets: number[]) => Promise<void>;
+  setHydrated: (hydrated: boolean) => void;
 };
 
-const initialState: HydrationState = {
-  settings: DEFAULT_SETTINGS,
-  progress: { date: getDateKey(new Date()), consumedMl: 0 },
-  onboarding: { completed: false },
-  quickLog: { presets: DEFAULT_QUICK_LOG_PRESETS, lastUsedMl: null },
-  history: {},
-  hydrated: false,
-};
+export type HydrationStore = HydrationState & HydrationActions;
 
-const HydrationContext = createContext<HydrationContextValue | null>(null);
-
-const reducer = (state: HydrationState, action: HydrationAction): HydrationState => {
-  switch (action.type) {
-    case "hydrate":
-      return { ...state, ...action.payload, hydrated: true };
-    case "setSettings":
-      return { ...state, settings: action.payload };
-    case "setProgress":
-      return { ...state, progress: action.payload };
-    case "setOnboarding":
-      return { ...state, onboarding: action.payload };
-    case "setQuickLog":
-      return { ...state, quickLog: action.payload };
-    case "setHistory":
-      return { ...state, history: action.payload };
-    default:
-      return state;
+export const migrateStorage = async (persistedState: unknown, version: number) => {
+  const todayKey = getDateKey(new Date());
+  
+  if (!persistedState || Object.keys(persistedState as any).length === 0) {
+    const legacyState = await hydrateStorage();
+    return legacyState as any;
   }
+
+  const state = persistedState as Partial<HydrationState>;
+  return {
+    settings: normalizeSettings(state.settings ?? null),
+    progress: normalizeProgress(state.progress ?? null, todayKey),
+    onboarding: normalizeOnboarding(state.onboarding ?? null),
+    quickLog: normalizeQuickLog(state.quickLog ?? null),
+    history: normalizeHistory(state.history ?? null),
+  } as any;
 };
 
-export const HydrationProvider = ({ children }: { children: React.ReactNode }) => {
-  const [state, dispatch] = useReducer(reducer, initialState);
+export const useHydrationStore = create<HydrationStore>()(
+  persist(
+    (set, get) => ({
+      settings: DEFAULT_SETTINGS,
+      progress: { date: getDateKey(new Date()), consumedMl: 0 },
+      onboarding: { completed: false },
+      quickLog: { presets: DEFAULT_QUICK_LOG_PRESETS, lastUsedMl: null },
+      history: {},
+      hydrated: false,
 
-  useEffect(() => {
-    const hydrate = async () => {
-      const snapshot = await hydrateStorage();
-      dispatch({
-        type: "hydrate",
-        payload: snapshot,
-      });
-    };
-    hydrate();
-  }, []);
+      setHydrated: (hydrated: boolean) => set({ hydrated }),
 
-  const updateSettings = useCallback(
-    async (patch: Partial<HydrationSettings>) => {
-      const next: HydrationSettings = {
-        ...state.settings,
-        ...patch,
-      };
-      dispatch({ type: "setSettings", payload: next });
-      await persistSettings(next);
-    },
-    [state.settings]
-  );
+      updateSettings: async (patch: Partial<HydrationSettings>) => {
+        set((state) => ({
+          settings: { ...state.settings, ...patch },
+        }));
+      },
 
-  const addConsumed = useCallback(
-    async (amountMl: number) => {
-      const todayKey = getDateKey(new Date());
-      const baseProgress =
-        state.progress.date === todayKey
-          ? state.progress
-          : { date: todayKey, consumedMl: 0 };
-      const next: HydrationProgress = {
-        date: todayKey,
-        consumedMl: Math.max(0, baseProgress.consumedMl + amountMl),
-      };
-      const goalMl = litersToMl(state.settings.targetLiters);
-      const goodThresholdMl = Math.round((goalMl * state.settings.gentleGoalThreshold) / 100);
-      const updatedHistory = updateHistoryForLog(
-        state.history,
-        new Date(),
-        amountMl,
-        goalMl,
-        goodThresholdMl
-      );
-      const trimmedHistory = trimHistory(updatedHistory, new Date());
-      const quickLogNext: QuickLogState = {
-        ...state.quickLog,
-        lastUsedMl: amountMl > 0 ? amountMl : state.quickLog.lastUsedMl,
-      };
-      dispatch({ type: "setProgress", payload: next });
-      dispatch({ type: "setHistory", payload: trimmedHistory });
-      dispatch({ type: "setQuickLog", payload: quickLogNext });
-      await persistProgress(next);
-      await persistHistory(trimmedHistory);
-      await persistQuickLog(quickLogNext);
-    },
-    [state.history, state.progress, state.quickLog, state.settings.gentleGoalThreshold, state.settings.targetLiters]
-  );
+      addConsumed: async (amountMl: number) => {
+        const { progress, history, settings, quickLog } = get();
+        const todayKey = getDateKey(new Date());
+        const baseProgress =
+          progress.date === todayKey
+            ? progress
+            : { date: todayKey, consumedMl: 0 };
 
-  const resetToday = useCallback(async () => {
-    const todayKey = getDateKey(new Date());
-    const next: HydrationProgress = { date: todayKey, consumedMl: 0 };
-    const goalMl = litersToMl(state.settings.targetLiters);
-    const goodThresholdMl = Math.round((goalMl * state.settings.gentleGoalThreshold) / 100);
-    const nextHistory = resetHistoryForDate(state.history, todayKey, goalMl, goodThresholdMl);
-    dispatch({ type: "setProgress", payload: next });
-    dispatch({ type: "setHistory", payload: nextHistory });
-    await persistProgress(next);
-    await persistHistory(nextHistory);
-  }, [state.history, state.settings.gentleGoalThreshold, state.settings.targetLiters]);
+        const nextProgress: HydrationProgress = {
+          date: todayKey,
+          consumedMl: Math.max(0, baseProgress.consumedMl + amountMl),
+        };
 
-  const completeOnboarding = useCallback(async () => {
-    const next: OnboardingState = { completed: true };
-    dispatch({ type: "setOnboarding", payload: next });
-    await persistOnboarding(next);
-  }, []);
+        const goalMl = litersToMl(settings.targetLiters);
+        const goodThresholdMl = Math.round(
+          (goalMl * settings.gentleGoalThreshold) / 100
+        );
 
-  const refreshProgressDate = useCallback(async () => {
-    const todayKey = getDateKey(new Date());
-    if (state.progress.date === todayKey) {
-      return false;
-    }
-    const next: HydrationProgress = { date: todayKey, consumedMl: 0 };
-    dispatch({ type: "setProgress", payload: next });
-    await persistProgress(next);
-    return true;
-  }, [state.progress.date]);
+        const updatedHistory = updateHistoryForLog(
+          history,
+          new Date(),
+          amountMl,
+          goalMl,
+          goodThresholdMl
+        );
+        const trimmedHistory = trimHistory(updatedHistory, new Date());
 
-  const updateQuickLogPresets = useCallback(
-    async (presets: number[]) => {
-      const cleaned = presets
-        .map((value) => (typeof value === "number" ? value : Number.parseInt(String(value), 10)))
-        .filter((value) => Number.isFinite(value) && value > 0);
-      const deduped = Array.from(new Set(cleaned)).slice(0, QUICK_LOG_MAX_PRESETS);
-      const finalPresets =
-        deduped.length >= QUICK_LOG_MIN_PRESETS ? deduped : state.quickLog.presets;
-      const next: QuickLogState = {
-        ...state.quickLog,
-        presets: finalPresets,
-      };
-      dispatch({ type: "setQuickLog", payload: next });
-      await persistQuickLog(next);
-    },
-    [state.quickLog]
-  );
+        const quickLogNext: QuickLogState = {
+          ...quickLog,
+          lastUsedMl: amountMl > 0 ? amountMl : quickLog.lastUsedMl,
+        };
 
-  useEffect(() => {
-    if (!state.hydrated) {
-      return;
-    }
-    const now = new Date();
-    const nextMidnight = new Date(now);
-    nextMidnight.setHours(24, 0, 0, 0);
-    const timeout = setTimeout(() => {
-      void refreshProgressDate();
-    }, nextMidnight.getTime() - now.getTime() + 500);
-    return () => clearTimeout(timeout);
-  }, [state.hydrated, state.progress.date, refreshProgressDate]);
+        set({
+          progress: nextProgress,
+          history: trimmedHistory,
+          quickLog: quickLogNext,
+        });
+      },
 
-  const value = useMemo(
-    () => ({
-      ...state,
-      updateSettings,
-      addConsumed,
-      resetToday,
-      completeOnboarding,
-      refreshProgressDate,
-      updateQuickLogPresets,
+      undoLastLog: async (amountMl: number, hour: number) => {
+        const { progress, history } = get();
+        const todayKey = getDateKey(new Date());
+
+        if (progress.date !== todayKey || progress.consumedMl < amountMl) {
+          return;
+        }
+
+        const nextProgress: HydrationProgress = {
+          date: todayKey,
+          consumedMl: Math.max(0, progress.consumedMl - amountMl),
+        };
+
+        const now = new Date();
+        now.setHours(hour);
+
+        const revertedHistory = undoHistoryForLog(history, now, amountMl);
+
+        set({
+          progress: nextProgress,
+          history: revertedHistory,
+        });
+      },
+
+      resetToday: async () => {
+        const { history, settings } = get();
+        const todayKey = getDateKey(new Date());
+        const nextProgress: HydrationProgress = { date: todayKey, consumedMl: 0 };
+        const goalMl = litersToMl(settings.targetLiters);
+        const goodThresholdMl = Math.round(
+          (goalMl * settings.gentleGoalThreshold) / 100
+        );
+        const nextHistory = resetHistoryForDate(history, todayKey, goalMl, goodThresholdMl);
+
+        set({
+          progress: nextProgress,
+          history: nextHistory,
+        });
+      },
+
+      completeOnboarding: async () => {
+        set({ onboarding: { completed: true } });
+      },
+
+      refreshProgressDate: async () => {
+        const { progress } = get();
+        const todayKey = getDateKey(new Date());
+        if (progress.date === todayKey) {
+          return false;
+        }
+        const nextProgress: HydrationProgress = { date: todayKey, consumedMl: 0 };
+        set({ progress: nextProgress });
+        return true;
+      },
+
+      updateQuickLogPresets: async (presets: number[]) => {
+        const { quickLog } = get();
+        const cleaned = presets
+          .map((value) => (typeof value === "number" ? value : Number.parseInt(String(value), 10)))
+          .filter((value) => Number.isFinite(value) && value > 0);
+        const deduped = Array.from(new Set(cleaned)).slice(0, QUICK_LOG_MAX_PRESETS);
+        const finalPresets =
+          deduped.length >= QUICK_LOG_MIN_PRESETS ? deduped : quickLog.presets;
+
+        set({
+          quickLog: {
+            ...quickLog,
+            presets: finalPresets,
+          },
+        });
+      },
     }),
-    [
-      state,
-      updateSettings,
-      addConsumed,
-      resetToday,
-      completeOnboarding,
-      refreshProgressDate,
-      updateQuickLogPresets,
-    ]
-  );
+    {
+      name: "siply:hydration_store:v1",
+      storage: createJSONStorage(() => AsyncStorage),
+      version: SCHEMA_VERSION,
+      migrate: migrateStorage,
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHydrated(true);
+        }
+      },
+    }
+  )
+);
 
-  return <HydrationContext.Provider value={value}>{children}</HydrationContext.Provider>;
-};
-
-export const useHydration = () => {
-  const context = useContext(HydrationContext);
-  if (!context) {
-    throw new Error("useHydration must be used within HydrationProvider");
-  }
-  return context;
-};
+export const useHydration = useHydrationStore;

@@ -10,16 +10,14 @@ import { PrimaryButton } from "../../src/features/hydration/ui/components/Primar
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import {
   DEFAULT_SETTINGS,
-  MAX_NOTIFICATIONS_PER_DAY,
-  MIN_INTERVAL_MINUTES,
-  NUDGE_MINUTES,
   REMINDER_TARGET_ML,
+  MIN_INTERVAL_MINUTES,
 } from "../../src/core/constants";
 import { parseTimeToMinutes } from "../../src/core/time";
-import { useHydration } from "../../src/features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { HydrationSettings } from "../../src/features/hydration/domain/types";
 import {
-  computeAutoPlan,
+  computeHydrationPlan,
   computeSipsPerReminder,
   getWindowMinutes,
   litersToMl,
@@ -28,7 +26,9 @@ import {
 export default function DefaultsScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { settings, updateSettings, completeOnboarding } = useHydration();
+  const settings = useHydrationStore((s) => s.settings);
+  const updateSettings = useHydrationStore((s) => s.updateSettings);
+  const completeOnboarding = useHydrationStore((s) => s.completeOnboarding);
   const [windowStart, setWindowStart] = useState(settings.windowStart);
   const [windowEnd, setWindowEnd] = useState(settings.windowEnd);
   const [sipMl, setSipMl] = useState(String(settings.sipMl));
@@ -51,17 +51,8 @@ export default function DefaultsScreen() {
   }, [settings, sipMl, windowEnd, windowStart]);
 
   const previewPlan = React.useMemo(() => {
-    const windowMinutes = getWindowMinutes(previewSettings);
     const targetMl = litersToMl(previewSettings.targetLiters);
-    const factor = previewSettings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
-    const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
-    return computeAutoPlan({
-      remainingMl: targetMl,
-      windowMinutes,
-      minIntervalMinutes: MIN_INTERVAL_MINUTES,
-      maxReminders: maxBase,
-      desiredReminderMl: REMINDER_TARGET_ML,
-    });
+    return computeHydrationPlan(previewSettings, targetMl);
   }, [previewSettings]);
 
   const previewMl = previewPlan?.mlPerReminder ?? REMINDER_TARGET_ML;

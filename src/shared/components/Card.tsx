@@ -1,7 +1,6 @@
 import React from "react";
 import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 import { useTheme } from "../theme/ThemeProvider";
-import { darkColors } from "../theme/tokens";
 
 type CardProps = {
   children: React.ReactNode;
@@ -10,7 +9,7 @@ type CardProps = {
 
 export const Card = ({ children, style }: CardProps) => {
   const theme = useTheme();
-  const isDark = theme.colors.background === darkColors.background;
+  const isDark = theme.mode === "dark";
   return (
     <View
       style={[

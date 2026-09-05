@@ -106,6 +106,35 @@ export const updateHistoryForLog = (
   };
 };
 
+export const undoHistoryForLog = (
+  history: HydrationHistory,
+  now: Date,
+  amountMl: number
+) => {
+  if (!Number.isFinite(amountMl) || amountMl <= 0) {
+    return history;
+  }
+  const dateKey = getDateKey(now);
+  const existing = history[dateKey];
+  if (!existing) {
+    return history;
+  }
+  const logHours = ensureLogHours(existing.logHours);
+  const hour = now.getHours();
+  logHours[hour] = Math.max(0, logHours[hour] - 1);
+
+  const next: HydrationDaySummary = {
+    ...existing,
+    totalMl: Math.max(0, existing.totalMl - amountMl),
+    logHours,
+  };
+
+  return {
+    ...history,
+    [dateKey]: next,
+  };
+};
+
 export const resetHistoryForDate = (history: HydrationHistory, dateKey: string, goalMl: number, goodThresholdMl: number) => {
   return {
     ...history,

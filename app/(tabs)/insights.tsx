@@ -12,7 +12,7 @@ import { ProgressBar } from "../../src/features/hydration/ui/components/Progress
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
 import { ShareCard } from "../../src/features/hydration/ui/components/ShareCard";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
-import { useHydration } from "../../src/features/hydration/state/hydrationStore";
+import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { litersToMl } from "../../src/features/hydration/domain/calculations";
 import {
   buildDateKeys,
@@ -39,12 +39,14 @@ const formatHour = (hour: number) => {
 
 export default function InsightsScreen() {
   const theme = useTheme();
-  const { settings, progress, history } = useHydration();
+  const settings = useHydrationStore((s) => s.settings);
+  const progress = useHydrationStore((s) => s.progress);
+  const history = useHydrationStore((s) => s.history);
   const [sharing, setSharing] = useState(false);
   const [shareReady, setShareReady] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const shareEnabled = Constants.appOwnership !== "expo";
-  const shareViewRef = useRef<any>(null);
+  const shareViewRef = useRef<View>(null);
   const captureRefFn = useRef<null | ((view: any, options?: any) => Promise<string>)>(null);
 
   const goalMl = useMemo(
