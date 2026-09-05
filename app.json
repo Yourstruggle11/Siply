@@ -15,7 +15,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "2"
+      "buildNumber": "2",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch"
+        ]
+      }
     },
     "android": {
       "versionCode": 2,
@@ -27,7 +32,8 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.yourstruggle11.siply",
       "permissions": [
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED"
       ]
     },
     "web": {

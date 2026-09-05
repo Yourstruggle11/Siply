@@ -40,7 +40,7 @@ type HydrationContextValue = HydrationState & {
   addConsumed: (amountMl: number) => Promise<void>;
   resetToday: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
-  refreshProgressDate: () => Promise<void>;
+  refreshProgressDate: () => Promise<boolean>;
   updateQuickLogPresets: (presets: number[]) => Promise<void>;
 };
 
@@ -156,11 +156,12 @@ export const HydrationProvider = ({ children }: { children: React.ReactNode }) =
   const refreshProgressDate = useCallback(async () => {
     const todayKey = getDateKey(new Date());
     if (state.progress.date === todayKey) {
-      return;
+      return false;
     }
     const next: HydrationProgress = { date: todayKey, consumedMl: 0 };
     dispatch({ type: "setProgress", payload: next });
     await persistProgress(next);
+    return true;
   }, [state.progress.date]);
 
   const updateQuickLogPresets = useCallback(

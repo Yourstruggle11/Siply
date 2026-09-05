@@ -155,7 +155,7 @@ export const configureNotificationActions = async () => {
       identifier: NOTIFICATION_ACTION_LOG,
       buttonTitle: "I drank",
       options: {
-        opensAppToForeground: false,
+        opensAppToForeground: true,
       },
     },
   ]);
@@ -223,6 +223,17 @@ export const scheduleNotifications = async (
   const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
   const baseSchedule = schedule.slots.slice(0, maxBase);
   const horizonEnd = addMinutes(now, 24 * 60);
+
+  if (Platform.OS === "ios") {
+    try {
+      const pending = await Notifications.getAllScheduledNotificationsAsync();
+      if (pending.length >= 50) {
+        console.warn(`Siply: OS notification cap warning. Already have ${pending.length} pending.`);
+      }
+    } catch (err) {
+      console.warn("Siply: failed to check scheduled notifications limit", err);
+    }
+  }
 
   const requests: Promise<string>[] = [];
   let requested = 0;
@@ -316,6 +327,23 @@ export const rescheduleNotifications = async (
   }
 
   const result = await scheduleNotifications(settings, consumedMl, now);
+
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
+    for (const notification of presented) {
+      const parts = notification.request.identifier.split(":");
+      if (parts[0] === NOTIFICATION_ID_PREFIX && parts.length >= 3) {
+        const timeMs = Number.parseInt(parts[2], 10);
+        if (Number.isFinite(timeMs) && timeMs < thirtyMinsAgo) {
+          void Notifications.dismissNotificationAsync(notification.request.identifier);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Siply: failed to dismiss stale notifications", err);
+  }
+
   void recordScheduleDiagnostics({
     source: "reschedule",
     at: new Date().toISOString(),
