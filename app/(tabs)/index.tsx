@@ -1,78 +1,107 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
 import { Screen } from "../../src/shared/components/Screen";
 import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
-import { AnimatedProgressValue } from "../../src/shared/components/AnimatedProgressValue";
-import { AnimatedStatRow } from "../../src/shared/components/AnimatedStatRow";
-import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
 import { Field } from "../../src/shared/components/Field";
 import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
-import { ProgressBar } from "../../src/features/hydration/ui/components/ProgressBar";
+import { ProgressRing } from "../../src/features/hydration/ui/components/ProgressRing";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydration } from "../../src/features/hydration/state/hydrationStore";
 import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
 import { formatTimeForDisplay } from "../../src/core/time";
-import { triggerLightHaptic } from "../../src/shared/haptics";
+import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
+
+interface MockLogEntry {
+  id: string;
+  timestamp: Date;
+  amount: number;
+}
 
 export default function HomeScreen() {
   const theme = useTheme();
-  const { addConsumed, quickLog } = useHydration();
+  const { addConsumed, quickLog, progress: globalProgress, settings, history } = useHydration();
   const { permission, requestPermission, openSettings } = useNotificationPermission();
   const requestedRef = useRef(false);
   const plan = useHydrationPlan();
   const [showAddAmount, setShowAddAmount] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
+  
+  const [sessionLogs, setSessionLogs] = useState<MockLogEntry[]>([]);
 
-  const progress = useMemo(() => {
-    if (plan.targetMl <= 0) {
-      return 0;
-    }
+  const progressPct = useMemo(() => {
+    if (plan.targetMl <= 0) return 0;
     return Math.min(1, plan.consumedMl / plan.targetMl);
   }, [plan.consumedMl, plan.targetMl]);
 
-  const handleQuickAdd = () => {
-    void triggerLightHaptic();
-    void addConsumed(plan.mlPerReminder);
+  useEffect(() => {
+    if (!permission || permission.granted || !permission.canAskAgain) return;
+    if (requestedRef.current) return;
+    requestedRef.current = true;
+    void requestPermission();
+  }, [permission, requestPermission]);
+
+  const handleLog = async (amountMl: number) => {
+    if (amountMl <= 0 || !Number.isFinite(amountMl)) return;
+    
+    const wasMet = plan.targetMet;
+    await addConsumed(amountMl);
+    
+    const newTotal = globalProgress.consumedMl + amountMl;
+    if (!wasMet && newTotal >= plan.targetMl) {
+      void triggerSuccessHaptic();
+    } else {
+      void triggerLightHaptic();
+    }
+
+    setSessionLogs(prev => [
+      { id: Date.now().toString(), timestamp: new Date(), amount: amountMl },
+      ...prev,
+    ]);
   };
 
-  const handleAddAmount = () => {
+  const handleQuickAdd = () => handleLog(plan.mlPerReminder);
+  const handlePresetLog = (amountMl: number) => handleLog(amountMl);
+  
+  const handleCustomAdd = () => {
     const parsed = Number.parseInt(customAmount, 10);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      void triggerLightHaptic();
-      void addConsumed(parsed);
+    if (parsed) {
+      void handleLog(parsed);
       setCustomAmount("");
       setShowAddAmount(false);
     }
   };
 
-  const handleQuickLog = (amountMl: number) => {
+  const handleUndo = (id: string, amount: number) => {
+    setSessionLogs(prev => prev.filter(log => log.id !== id));
+    void addConsumed(-amount);
     void triggerLightHaptic();
-    void addConsumed(amountMl);
   };
 
-  useEffect(() => {
-    if (!permission || permission.granted || !permission.canAskAgain) {
-      return;
-    }
-    if (requestedRef.current) {
-      return;
-    }
-    requestedRef.current = true;
-    void requestPermission();
-  }, [permission, requestPermission]);
+  const isInitialEmptyState = sessionLogs.length === 0 && globalProgress.consumedMl === 0;
+  
+  const todayDateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
     <Screen scroll>
       <View style={styles.container}>
-        <PulsingTitle text="Today" style={styles.title} />
+        
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.colors.textPrimary, ...theme.typography.displayLarge }]}>
+            Today
+          </Text>
+          <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.body }]}>
+            {todayDateStr}
+          </Text>
+        </View>
 
         {permission && !permission.granted ? (
           <AnimatedCard style={styles.alertCard} delay={80}>
-            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary }]}>
+            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary, ...theme.typography.titleMedium }]}>
               Notifications are off
             </Text>
-            <Text style={[styles.alertBody, { color: theme.colors.textSecondary }]}>
+            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>
               Reminders will not fire until notifications are enabled.
             </Text>
             <PrimaryButton
@@ -83,46 +112,65 @@ export default function HomeScreen() {
           </AnimatedCard>
         ) : null}
 
-        <AnimatedCard delay={120}>
-          <View style={styles.progressHeader}>
-            <View style={styles.progressValueRow}>
-              <AnimatedProgressValue value={plan.consumedMl} suffix=" ml" style={styles.progressValue} />
-              <Text style={[styles.progressSubtext, { color: theme.colors.textSecondary }]}>
-                of {plan.targetMl} ml
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <ProgressRing progress={progressPct} size={240} strokeWidth={20}>
+            <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.displayLarge }]}>
+              {Math.round(progressPct * 100)}%
+            </Text>
+            <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, marginTop: 4 }]}>
+              {plan.consumedMl.toLocaleString()} / {plan.targetMl.toLocaleString()} ml
+            </Text>
+          </ProgressRing>
+          
+          <View style={styles.mainCtaContainer}>
+            <PrimaryButton label={`I drank ${plan.mlPerReminder} ml`} onPress={handleQuickAdd} />
+            <Pressable onPress={() => setShowAddAmount(!showAddAmount)} style={styles.customAddButton}>
+              <Text style={[{ color: theme.colors.accent, ...theme.typography.bodySmall, fontWeight: "600" }]}>
+                {showAddAmount ? "Cancel custom amount" : "+ Add a custom amount"}
               </Text>
-            </View>
-            <AnimatedStatRow
-              label="Remaining"
-              value={`${plan.remainingMl} ml`}
-              delay={160}
-              labelStyle={[styles.progressSubtext, { color: theme.colors.textSecondary }]}
-              valueStyle={[styles.progressSubtext, { color: theme.colors.textSecondary }]}
-            />
+            </Pressable>
           </View>
-          <ProgressBar progress={progress} />
-        </AnimatedCard>
+        </View>
 
-        <AnimatedCard delay={180}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Quick log</Text>
+        {showAddAmount ? (
+          <AnimatedCard delay={100} style={styles.customAddCard}>
+            <View style={styles.addRow}>
+              <Field
+                label="Custom Amount (ml)"
+                value={customAmount}
+                onChangeText={setCustomAmount}
+                keyboardType="number-pad"
+                placeholder="e.g. 150"
+              />
+              <PrimaryButton label="Log" onPress={handleCustomAdd} />
+            </View>
+          </AnimatedCard>
+        ) : null}
+
+        {/* Quick Log Card */}
+        <AnimatedCard delay={120} style={styles.card}>
+          <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, marginBottom: 12 }]}>
+            Quick log
+          </Text>
           <View style={styles.quickLogRow}>
             {quickLog.presets.map((amount) => {
               const isActive = quickLog.lastUsedMl === amount;
               return (
                 <Pressable
                   key={`preset-${amount}`}
-                  onPress={() => handleQuickLog(amount)}
+                  onPress={() => handlePresetLog(amount)}
                   style={[
                     styles.presetButton,
                     {
                       borderColor: theme.colors.border,
-                      backgroundColor: isActive ? theme.colors.accent : theme.colors.surface,
+                      backgroundColor: isActive ? theme.colors.accentSoft : theme.colors.surfaceElevated,
                     },
                   ]}
                 >
                   <Text
                     style={[
-                      styles.presetText,
-                      { color: isActive ? theme.colors.surface : theme.colors.textPrimary },
+                      { color: isActive ? theme.colors.accent : theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" },
                     ]}
                   >
                     {amount} ml
@@ -131,55 +179,63 @@ export default function HomeScreen() {
               );
             })}
           </View>
-          <Text style={[styles.quickLogHint, { color: theme.colors.textSecondary }]}>
-            Customize presets in Settings.
+        </AnimatedCard>
+        
+        {/* Stats Card */}
+        <AnimatedCard delay={160} style={styles.card}>
+          <View style={styles.statRow}>
+             <View style={styles.statLabelRow}>
+               <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Next sip</Text>
+             </View>
+             <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
+               ~{plan.mlPerReminder} ml ({plan.sipsPerReminder} sips)
+             </Text>
+           </View>
+           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+           <View style={styles.statRow}>
+             <View style={styles.statLabelRow}>
+               <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Next reminder</Text>
+             </View>
+             <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
+               {plan.nextReminderAt ? formatTimeForDisplay(plan.nextReminderAt) : "Not scheduled"}
+             </Text>
+           </View>
+        </AnimatedCard>
+
+        {/* Timeline Section */}
+        <View style={styles.timelineSection}>
+          <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.titleLarge, marginBottom: 16 }]}>
+            Today's log
           </Text>
-        </AnimatedCard>
-
-        <AnimatedCard delay={240} style={styles.statCard}>
-          <AnimatedStatRow
-            label="Next sip"
-            value={
-              plan.targetMet
-                ? "Target met for today"
-                : `~${plan.mlPerReminder} ml (${plan.sipsPerReminder} sips)`
-            }
-            delay={260}
-            labelStyle={styles.label}
-            valueStyle={styles.labelValue}
-          />
-          <AnimatedStatRow
-            label="Next reminder"
-            value={plan.nextReminderAt ? formatTimeForDisplay(plan.nextReminderAt) : "Not scheduled"}
-            delay={300}
-            labelStyle={styles.label}
-            valueStyle={styles.labelValue}
-          />
-        </AnimatedCard>
-
-        <View style={styles.actions}>
-          <PrimaryButton label="I drank" onPress={handleQuickAdd} />
-          <PrimaryButton
-            label={showAddAmount ? "Cancel" : "Add amount"}
-            variant="secondary"
-            onPress={() => setShowAddAmount((value) => !value)}
-          />
-        </View>
-
-        {showAddAmount ? (
-          <AnimatedCard delay={300}>
-            <View style={styles.addRow}>
-              <Field
-                label="Amount (ml)"
-                value={customAmount}
-                onChangeText={setCustomAmount}
-                keyboardType="number-pad"
-                placeholder="250"
-              />
-              <PrimaryButton label="Add" onPress={handleAddAmount} />
+          
+          {sessionLogs.length === 0 ? (
+            <AnimatedCard delay={200} style={styles.emptyStateCard}>
+              <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.body, textAlign: "center", lineHeight: 22 }]}>
+                No logs yet today.{"\n"}Tap "I drank" above to add your first sip.
+              </Text>
+            </AnimatedCard>
+          ) : (
+            <View style={styles.timelineList}>
+              {sessionLogs.map((log, index) => (
+                <View key={log.id} style={styles.timelineRow}>
+                  <View style={[styles.timelineNode, { backgroundColor: theme.colors.accent }]} />
+                  {index < sessionLogs.length - 1 && <View style={[styles.timelineLine, { backgroundColor: theme.colors.border }]} />}
+                  <View style={[styles.timelineCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                    <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.body }]}>{log.amount} ml</Text>
+                    <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
+                      {formatTimeForDisplay(log.timestamp)}
+                    </Text>
+                  </View>
+                  {index === 0 && (
+                    <Pressable onPress={() => handleUndo(log.id, log.amount)} style={styles.undoButton}>
+                      <Text style={[{ color: theme.colors.accent, ...theme.typography.caption }]}>Undo</Text>
+                    </Pressable>
+                  )}
+                </View>
+              ))}
             </View>
-          </AnimatedCard>
-        ) : null}
+          )}
+        </View>
       </View>
     </Screen>
   );
@@ -187,78 +243,125 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
-    paddingBottom: 24,
+    gap: 20,
+    paddingBottom: 40,
+    paddingTop: 12,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    paddingHorizontal: 16,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "600",
+    letterSpacing: -0.5,
   },
-  progressHeader: {
+  heroSection: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 24,
     marginBottom: 8,
-    gap: 6,
   },
-  progressValueRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 6,
-  },
-  progressValue: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  progressSubtext: {
-    fontSize: 13,
-  },
-  label: {
-    fontSize: 14,
-  },
-  labelValue: {
-    fontSize: 14,
-    textAlign: "right",
-  },
-  actions: {
+  mainCtaContainer: {
+    paddingHorizontal: 16,
+    width: '100%',
     gap: 12,
   },
-  statCard: {
-    gap: 10,
+  customAddButton: {
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  customAddCard: {
+    marginHorizontal: 16,
+    padding: 16,
   },
   addRow: {
     gap: 12,
   },
-  sectionTitle: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+  card: {
+    marginHorizontal: 16,
+    padding: 16,
   },
   quickLogRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
-    marginTop: 10,
   },
   presetButton: {
     borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    borderRadius: 999, // pill
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44, // touch target
   },
-  presetText: {
-    fontSize: 14,
-    fontWeight: "600",
+  statRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
   },
-  quickLogHint: {
-    fontSize: 12,
-    marginTop: 10,
+  statLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  divider: {
+    height: 1,
+    width: "100%",
+    marginVertical: 10,
   },
   alertCard: {
     gap: 10,
+    marginHorizontal: 16,
   },
-  alertTitle: {
-    fontSize: 15,
-    fontWeight: "600",
+  alertTitle: {},
+  alertBody: {},
+  timelineSection: {
+    paddingHorizontal: 16,
+    marginTop: 8,
   },
-  alertBody: {
-    fontSize: 13,
+  emptyStateCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  timelineList: {
+    gap: 0,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    minHeight: 50,
+  },
+  timelineNode: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 16,
+    zIndex: 2,
+  },
+  timelineLine: {
+    position: "absolute",
+    left: 5,
+    top: 12,
+    bottom: -28,
+    width: 2,
+    zIndex: 1,
+  },
+  timelineCard: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  undoButton: {
+    marginLeft: 12,
+    padding: 8,
   },
 });

@@ -5,16 +5,26 @@ import { useTheme } from "../../../../shared/theme/ThemeProvider";
 type PrimaryButtonProps = {
   label: string;
   onPress: () => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "ghost";
   disabled?: boolean;
 };
 
 export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }: PrimaryButtonProps) => {
   const theme = useTheme();
-  const isSecondary = variant === "secondary";
-  const backgroundColor = isSecondary ? "transparent" : theme.colors.textPrimary;
-  const borderColor = isSecondary ? theme.colors.border : "transparent";
-  const textColor = isSecondary ? theme.colors.textPrimary : theme.colors.surface;
+  
+  let backgroundColor = theme.colors.accent;
+  let borderColor = "transparent";
+  let textColor = theme.colors.surface;
+
+  if (variant === "secondary") {
+    backgroundColor = theme.colors.surfaceElevated;
+    borderColor = "transparent";
+    textColor = theme.colors.textPrimary;
+  } else if (variant === "ghost") {
+    backgroundColor = "transparent";
+    borderColor = theme.colors.accent;
+    textColor = theme.colors.accent;
+  }
 
   return (
     <Pressable
@@ -23,7 +33,7 @@ export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }:
       style={({ pressed }) => [
         styles.button,
         {
-          borderRadius: theme.radius.lg,
+          borderRadius: theme.radius.full, // pill shape
           backgroundColor,
           borderColor,
           opacity: disabled ? 0.5 : pressed ? 0.9 : 1,
@@ -41,9 +51,11 @@ export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }:
 const styles = StyleSheet.create({
   button: {
     borderWidth: 1,
-    paddingVertical: 13,
-    paddingHorizontal: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48, // Accessibility minimum touch target
   },
   label: {
     fontSize: 16,

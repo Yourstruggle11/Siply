@@ -5,46 +5,70 @@ export const spacing = {
   lg: 24,
   xl: 32,
   xxl: 40,
+  "2xl": 48,
+  "3xl": 64,
 };
 
 export const radius = {
   sm: 8,
   md: 12,
-  lg: 18,
+  lg: 16,
   xl: 24,
+  full: 9999,
 };
 
 export const typography = {
-  title: {
-    fontSize: 24,
+  displayLarge: {
+    fontSize: 32,
+    fontWeight: "700" as const,
+    letterSpacing: -0.5,
+  },
+  titleLarge: {
+    fontSize: 22,
+    fontWeight: "600" as const,
+  },
+  titleMedium: {
+    fontSize: 18,
     fontWeight: "600" as const,
   },
   body: {
     fontSize: 16,
     fontWeight: "400" as const,
   },
-  caption: {
-    fontSize: 13,
+  bodySmall: {
+    fontSize: 14,
     fontWeight: "400" as const,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: "500" as const,
   },
 };
 
 export const lightColors = {
-  background: "#F5F6F7",
+  background: "#F8FAFB",
   surface: "#FFFFFF",
-  textPrimary: "#1C1E21",
-  textSecondary: "#6C7076",
-  accent: "#6B7C8D",
-  border: "#D9DDE1",
+  surfaceElevated: "#F0F4F6",
+  textPrimary: "#1A1D21",
+  textSecondary: "#5A6370",
+  accent: "#3B82C4",
+  accentSoft: "#E8F2FB",
+  success: "#2DA67A",
+  warning: "#D4930A",
+  border: "#DDE2E7",
 };
 
 export const darkColors = {
-  background: "#0F1113",
-  surface: "#171A1D",
-  textPrimary: "#ECEFF1",
-  textSecondary: "#A1A7AE",
-  accent: "#6B7C8D",
-  border: "#2A2E33",
+  background: "#0C0F12",
+  surface: "#161A1F",
+  surfaceElevated: "#1E2328",
+  textPrimary: "#E8ECF0",
+  textSecondary: "#9CA3AB",
+  accent: "#5BA3E0",
+  accentSoft: "#1A2A3A",
+  success: "#3EBF8E",
+  warning: "#EAA820",
+  border: "#2A2F36",
 };
 
 export type Theme = {
