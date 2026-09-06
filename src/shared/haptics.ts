@@ -7,3 +7,11 @@ export const triggerLightHaptic = async () => {
     // Ignore haptic errors for unsupported devices.
   }
 };
+
+export const triggerSuccessHaptic = async () => {
+  try {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  } catch {
+    // Ignore haptic errors for unsupported devices.
+  }
+};

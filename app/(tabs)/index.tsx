@@ -8,7 +8,7 @@ import { ProgressRing } from "../../src/features/hydration/ui/components/Progres
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
-import { formatTimeForDisplay } from "../../src/core/time";
+import { formatTimeForDisplay, getDateKey, setTimeOnDate } from "../../src/core/time";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
 
@@ -16,6 +16,7 @@ interface MockLogEntry {
   id: string;
   timestamp: Date;
   amount: number;
+  isReconstructed?: boolean;
 }
 
 export default function HomeScreen() {
@@ -33,6 +34,31 @@ export default function HomeScreen() {
   const [customAmount, setCustomAmount] = useState("");
   
   const [sessionLogs, setSessionLogs] = useState<MockLogEntry[]>([]);
+
+  useEffect(() => {
+    if (globalProgress.consumedMl > 0 && sessionLogs.length === 0) {
+      const today = getDateKey(new Date());
+      const todayHistory = history[today];
+      if (todayHistory && todayHistory.logHours) {
+        const reconstructed: MockLogEntry[] = [];
+        todayHistory.logHours.forEach((amount, hourIndex) => {
+          if (amount > 0) {
+            const timeStr = `${hourIndex.toString().padStart(2, "0")}:00`;
+            reconstructed.push({
+              id: `reconstructed-${hourIndex}`,
+              timestamp: setTimeOnDate(new Date(), timeStr),
+              amount,
+              isReconstructed: true,
+            });
+          }
+        });
+        if (reconstructed.length > 0) {
+          reconstructed.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+          setSessionLogs(reconstructed);
+        }
+      }
+    }
+  }, [globalProgress.consumedMl, history, sessionLogs.length]);
 
   const progressPct = useMemo(() => {
     if (plan.targetMl <= 0) return 0;
@@ -232,7 +258,7 @@ export default function HomeScreen() {
                       {formatTimeForDisplay(log.timestamp)}
                     </Text>
                   </View>
-                  {index === 0 && (
+                  {index === 0 && !log.isReconstructed && (
                     <Pressable onPress={() => handleUndo(log.id, log.amount, log.timestamp)} style={styles.undoButton}>
                       <Text style={[{ color: theme.colors.accent, ...theme.typography.caption }]}>Undo</Text>
                     </Pressable>

@@ -37,12 +37,41 @@ import {
   getWindowMinutes,
   litersToMl,
 } from "../../src/features/hydration/domain/calculations";
+import { exportBackup } from "../../src/features/hydration/backup/export";
+import { importBackup } from "../../src/features/hydration/backup/import";
 
 export default function SettingsScreen() {
   const theme = useTheme();
   const settings = useHydrationStore((s) => s.settings);
+  const progress = useHydrationStore((s) => s.progress);
+  const quickLog = useHydrationStore((s) => s.quickLog);
   const updateSettings = useHydrationStore((s) => s.updateSettings);
   const updateQuickLogPresets = useHydrationStore((s) => s.updateQuickLogPresets);
+  const resetToday = useHydrationStore((s) => s.resetToday);
+
+  // Backup button loading states
+  const [backupExporting, setBackupExporting] = useState(false);
+  const [backupImporting, setBackupImporting] = useState(false);
+
+  const handleExportBackup = async () => {
+    if (backupExporting) return;
+    setBackupExporting(true);
+    try {
+      await exportBackup();
+    } finally {
+      setBackupExporting(false);
+    }
+  };
+
+  const handleImportBackup = async () => {
+    if (backupImporting) return;
+    setBackupImporting(true);
+    try {
+      await importBackup();
+    } finally {
+      setBackupImporting(false);
+    }
+  };
 
   const [draft, setDraft] = useState(() => ({
     target: settings.targetLiters.toFixed(1),
@@ -584,6 +613,26 @@ export default function SettingsScreen() {
         </AnimatedCard>
 
         <AnimatedCard style={styles.section} delay={420}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Data backup</Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            Export your settings and history to a .siply.json file, or restore from a previous backup.
+          </Text>
+          <View style={styles.actionGroup}>
+            <PrimaryButton
+              label={backupExporting ? "Exporting…" : "Export backup"}
+              onPress={handleExportBackup}
+              disabled={backupExporting || backupImporting}
+            />
+            <PrimaryButton
+              label={backupImporting ? "Importing…" : "Import backup"}
+              variant="secondary"
+              onPress={handleImportBackup}
+              disabled={backupExporting || backupImporting}
+            />
+          </View>
+        </AnimatedCard>
+
+        <AnimatedCard style={styles.section} delay={460}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Actions</Text>
           <View style={styles.actionGroup}>
             <PrimaryButton

@@ -19,6 +19,30 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch"
+        ],
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Siply Backup",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Owner",
+            "LSItemContentTypes": [
+              "com.yourstruggle11.siply.backup"
+            ]
+          }
+        ],
+        "UTExportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "com.yourstruggle11.siply.backup",
+            "UTTypeDescription": "Siply Backup File",
+            "UTTypeConformsTo": [
+              "public.json"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "siply.json"
+              ]
+            }
+          }
         ]
       }
     },
@@ -34,6 +58,28 @@
       "permissions": [
         "POST_NOTIFICATIONS",
         "RECEIVE_BOOT_COMPLETED"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "file",
+              "mimeType": "application/json",
+              "pathPattern": ".*\\.siply\\.json"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/json",
+              "pathPattern": ".*\\.siply\\.json"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
@@ -58,7 +104,8 @@
             "enableShrinkResources": true
           }
         }
-      ]
+      ],
+      "expo-background-task"
     ],
     "extra": {
       "router": {},
