@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Share, StyleSheet, Text, View, Pressable } from "react-native";
+import { ScrollView, Share, StyleSheet, Text, View, Pressable } from "react-native";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { Screen } from "../../src/shared/components/Screen";
@@ -16,9 +16,11 @@ import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { litersToMl } from "../../src/features/hydration/domain/calculations";
 import { formatLiquid } from "../../src/core/units";
+import { formatTimeForDisplay, getDateKey } from "../../src/core/time";
+import { ENTRY_RETENTION_DAYS } from "../../src/core/constants";
 import {
   buildDateKeys,
-  computeBestHours,
+  computeBestHoursByVolume,
   computeStreakStats,
   getSummaryForDate,
 } from "../../src/features/hydration/domain/history";
@@ -73,7 +75,9 @@ export default function HistoryScreen() {
     [goodThresholdMl, goalMl, history, settings.gentleGoalEnabled]
   );
 
-  const bestHours = useMemo(() => computeBestHours(history, new Date(), 30), [history]);
+  // §7.2 — volume-based best hours (uses exact entry data when available,
+  // proportional fallback for summary-only days)
+  const bestHours = useMemo(() => computeBestHoursByVolume(history, new Date(), 30), [history]);
 
   const chartData90 = useMemo(() => {
     const keys = buildDateKeys(new Date(), 90);
@@ -291,7 +295,7 @@ export default function HistoryScreen() {
             <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>
               {formatDateLabel(selectedSummary.date)}
             </Text>
-            
+
             <View style={styles.sheetStatRow}>
               <View>
                 <Text style={[styles.sheetStatValue, { color: theme.colors.textPrimary }]}>
@@ -315,6 +319,48 @@ export default function HistoryScreen() {
               Hourly Distribution ({selectedSummary.logHours.reduce((a, b) => a + b, 0)} logs)
             </Text>
             <HourlyBarChart logHours={selectedSummary.logHours} goalMl={selectedSummary.goalMl} />
+
+            {/* §6.2 — Entry list or estimated-activity label */}
+            {(() => {
+              const entryCutoff = getDateKey(
+                new Date(Date.now() - (ENTRY_RETENTION_DAYS - 1) * 24 * 60 * 60 * 1000)
+              );
+              const hasEntries =
+                selectedSummary.entries && selectedSummary.entries.length > 0;
+              const withinWindow = selectedSummary.date >= entryCutoff;
+
+              if (hasEntries && withinWindow) {
+                const sorted = [...selectedSummary.entries!].sort(
+                  (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                );
+                return (
+                  <View style={styles.entryListSection}>
+                    <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary, marginTop: 20 }]}>
+                      Log Entries
+                    </Text>
+                    {sorted.map((entry) => (
+                      <View key={entry.id} style={[styles.entryRow, { borderColor: theme.colors.border }]}>
+                        <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
+                          {formatTimeForDisplay(new Date(entry.timestamp))}
+                        </Text>
+                        <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
+                          {formatLiquid(entry.amountMl, settings.displayUnit)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              }
+
+              // §6.2 — no entries: show estimated-activity label
+              return (
+                <View style={styles.estimatedLabelRow}>
+                  <Text style={[styles.estimatedLabel, { color: theme.colors.textSecondary }]}>
+                    ℹ︎  Estimated activity — exact log times are not available for this day.
+                  </Text>
+                </View>
+              );
+            })()}
           </View>
         )}
       </BottomSheet>
@@ -401,5 +447,25 @@ const styles = StyleSheet.create({
   },
   trendStatLabel: {
     fontSize: 12,
-  }
+  },
+  entryListSection: {
+    marginTop: 4,
+  },
+  entryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  estimatedLabelRow: {
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  estimatedLabel: {
+    fontSize: 13,
+    fontStyle: "italic",
+    lineHeight: 18,
+  },
 });

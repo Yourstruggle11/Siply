@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   DEFAULT_QUICK_LOG_PRESETS,
   DEFAULT_SETTINGS,
+  ENTRY_RETENTION_DAYS,
   QUICK_LOG_MAX_PRESETS,
   QUICK_LOG_MIN_PRESETS,
   SCHEMA_VERSION,
@@ -18,6 +19,7 @@ import {
 import { getDateKey } from "../../../core/time";
 import { litersToMl } from "../domain/calculations";
 import {
+  DrinkPreset,
   HydrationHistory,
   HydrationProgress,
   HydrationSettings,
@@ -44,7 +46,8 @@ export type HydrationState = {
 type HydrationActions = {
   updateSettings: (patch: Partial<HydrationSettings>) => Promise<void>;
   addConsumed: (amountMl: number) => Promise<void>;
-  undoLastLog: (amountMl: number, hour: number) => Promise<void>;
+  /** §4.3 — no parameters: store reads the last entry from history[today].entries */
+  undoLastLog: () => Promise<void>;
   resetToday: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refreshProgressDate: () => Promise<boolean>;
@@ -54,22 +57,40 @@ type HydrationActions = {
 
 export type HydrationStore = HydrationState & HydrationActions;
 
+// ---------------------------------------------------------------------------
+// §3.3 — migrateStorage with version-gated pattern
+// ---------------------------------------------------------------------------
 export const migrateStorage = async (persistedState: unknown, version: number) => {
   const todayKey = getDateKey(new Date());
-  
+
+  // Case 1: Empty persisted state — attempt legacy 6-key migration
   if (!persistedState || Object.keys(persistedState as any).length === 0) {
     const legacyState = await hydrateStorage();
     return legacyState as any;
   }
 
+  // Case 2: Non-empty — normalise each slice defensively
   const state = persistedState as Partial<HydrationState>;
-  return {
+  const normalised = {
     settings: normalizeSettings(state.settings ?? null),
     progress: normalizeProgress(state.progress ?? null, todayKey),
     onboarding: normalizeOnboarding(state.onboarding ?? null),
     quickLog: normalizeQuickLog(state.quickLog ?? null),
     history: normalizeHistory(state.history ?? null),
-  } as any;
+  };
+
+  // Version-specific migrations
+  // v2 → v3: entries field is optional on HydrationDaySummary.
+  //           normalizeHistory already handles absent entries (they stay
+  //           undefined). No data transformation needed — the field is
+  //           additive and optional. This block exists as the pattern for
+  //           future version-gated migrations.
+  if (version < 3) {
+    // No-op for v2→v3: entries are undefined on old days by design.
+    // Future migrations (e.g. v3→v4) would add transformation logic here.
+  }
+
+  return normalised as any;
 };
 
 export const useHydrationStore = create<HydrationStore>()(
@@ -90,18 +111,11 @@ export const useHydrationStore = create<HydrationStore>()(
         }));
       },
 
+      // §9 — addConsumed: consumedMl sourced from history.totalMl for consistency
       addConsumed: async (amountMl: number) => {
-        const { progress, history, settings, quickLog } = get();
-        const todayKey = getDateKey(new Date());
-        const baseProgress =
-          progress.date === todayKey
-            ? progress
-            : { date: todayKey, consumedMl: 0 };
-
-        const nextProgress: HydrationProgress = {
-          date: todayKey,
-          consumedMl: Math.max(0, baseProgress.consumedMl + amountMl),
-        };
+        const { history, settings, quickLog } = get();
+        const now = new Date();
+        const todayKey = getDateKey(now);
 
         const goalMl = litersToMl(settings.targetLiters);
         const goodThresholdMl = Math.round(
@@ -110,17 +124,25 @@ export const useHydrationStore = create<HydrationStore>()(
 
         const updatedHistory = updateHistoryForLog(
           history,
-          new Date(),
+          now,
           amountMl,
           goalMl,
           goodThresholdMl
         );
-        const trimmedHistory = trimHistory(updatedHistory, new Date());
+        const trimmedHistory = trimHistory(updatedHistory, now, undefined, ENTRY_RETENTION_DAYS);
+
+        // Derive progress.consumedMl from history for consistency —
+        // ensures progress never drifts from the entry-derived totalMl.
+        const todaySummary = trimmedHistory[todayKey];
+        const nextProgress: HydrationProgress = {
+          date: todayKey,
+          consumedMl: todaySummary?.totalMl ?? 0,
+        };
 
         const quickLogNext: QuickLogState = {
           ...quickLog,
           lastUsedMl: amountMl > 0 ? amountMl : quickLog.lastUsedMl,
-          lastLogAt: amountMl > 0 ? new Date().toISOString() : quickLog.lastLogAt,
+          lastLogAt: amountMl > 0 ? now.toISOString() : quickLog.lastLogAt,
         };
 
         set({
@@ -130,27 +152,25 @@ export const useHydrationStore = create<HydrationStore>()(
         });
       },
 
-      undoLastLog: async (amountMl: number, hour: number) => {
-        const { progress, history } = get();
+      // §4.2.1 — undoLastLog: no parameters; reads last entry from store
+      undoLastLog: async () => {
+        const { history } = get();
         const todayKey = getDateKey(new Date());
 
-        if (progress.date !== todayKey || progress.consumedMl < amountMl) {
-          return;
+        const nextHistory = undoHistoryForLog(history, todayKey);
+        if (nextHistory === history) {
+          return; // nothing to undo (no entries for today)
         }
 
+        const todaySummary = nextHistory[todayKey];
         const nextProgress: HydrationProgress = {
           date: todayKey,
-          consumedMl: Math.max(0, progress.consumedMl - amountMl),
+          consumedMl: todaySummary?.totalMl ?? 0,
         };
-
-        const now = new Date();
-        now.setHours(hour);
-
-        const revertedHistory = undoHistoryForLog(history, now, amountMl);
 
         set({
           progress: nextProgress,
-          history: revertedHistory,
+          history: nextHistory,
         });
       },
 
@@ -187,9 +207,9 @@ export const useHydrationStore = create<HydrationStore>()(
 
       updateQuickLogPresets: async (presets: DrinkPreset[]) => {
         const { quickLog } = get();
-        // Assume passed presets are pre-validated by the UI
+        // Assume passed presets are pre-validated by the UI (dedup is caller's responsibility)
         const finalPresets = presets.slice(0, QUICK_LOG_MAX_PRESETS);
-        
+
         // Ensure minimum
         if (finalPresets.length < QUICK_LOG_MIN_PRESETS) {
           // Fill from defaults if they removed too many

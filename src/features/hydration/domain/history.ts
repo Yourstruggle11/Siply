@@ -1,10 +1,11 @@
 import { addDays, getDateKey } from "../../../core/time";
 import {
+  ENTRY_RETENTION_DAYS,
   HISTORY_RETENTION_DAYS,
   QUICK_LOG_MAX_PRESETS,
   QUICK_LOG_MIN_PRESETS,
 } from "../../../core/constants";
-import { HydrationDaySummary, HydrationHistory } from "./types";
+import { HydrationDaySummary, HydrationHistory, LogEntry } from "./types";
 
 const ensureLogHours = (input?: number[]) => {
   const base = Array.isArray(input) ? input.slice(0, 24) : [];
@@ -15,6 +16,29 @@ const ensureLogHours = (input?: number[]) => {
   return normalized;
 };
 
+// ---------------------------------------------------------------------------
+// §1.4 — deriveAggregates
+// Pure helper: compute totalMl and logHours from an entries array.
+// Called from updateHistoryForLog and undoHistoryForLog to maintain the
+// critical invariant:
+//   totalMl === entries.reduce((sum, e) => sum + e.amountMl, 0)
+//   logHours[h] === entries.filter(e => getHours(e.timestamp) === h).length
+// ---------------------------------------------------------------------------
+export function deriveAggregates(entries: LogEntry[]): { totalMl: number; logHours: number[] } {
+  const logHours = Array.from({ length: 24 }, () => 0);
+  let totalMl = 0;
+  for (const entry of entries) {
+    totalMl += entry.amountMl;
+    const hour = new Date(entry.timestamp).getHours();
+    logHours[hour] += 1;
+  }
+  return { totalMl, logHours };
+}
+
+// ---------------------------------------------------------------------------
+// §3.4 — normalizeHistory
+// Pass-through entries when present and valid. Never fabricate them when absent.
+// ---------------------------------------------------------------------------
 export const normalizeHistory = (input: unknown): HydrationHistory => {
   if (!input || typeof input !== "object") {
     return {};
@@ -34,30 +58,73 @@ export const normalizeHistory = (input: unknown): HydrationHistory => {
       typeof entry.goodThresholdMl === "number" && Number.isFinite(entry.goodThresholdMl)
         ? entry.goodThresholdMl
         : 0;
+
+    // Validate entries if present — filter out any malformed items
+    let entries: LogEntry[] | undefined;
+    if (Array.isArray(entry.entries)) {
+      const valid = entry.entries.filter(
+        (e): e is LogEntry =>
+          !!e &&
+          typeof e === "object" &&
+          typeof (e as any).id === "string" &&
+          typeof (e as any).timestamp === "string" &&
+          typeof (e as any).amountMl === "number" &&
+          Number.isFinite((e as any).amountMl) &&
+          (e as any).amountMl > 0
+      );
+      // Don't store an empty array — treat as legacy (undefined)
+      if (valid.length > 0) {
+        entries = valid;
+      }
+    }
+
     result[key] = {
       date: key,
       totalMl,
       goalMl,
       goodThresholdMl,
       logHours: ensureLogHours(entry.logHours),
+      ...(entries ? { entries } : {}),
     };
   }
   return result;
 };
 
-
-
-export const trimHistory = (history: HydrationHistory, now: Date, retentionDays = HISTORY_RETENTION_DAYS) => {
+// ---------------------------------------------------------------------------
+// §2.3 — trimHistory
+// Strip entries past the 7-day retention window while keeping the summary.
+// The existing day-level cutoff (120-day HISTORY_RETENTION_DAYS) is unchanged.
+// ---------------------------------------------------------------------------
+export const trimHistory = (
+  history: HydrationHistory,
+  now: Date,
+  retentionDays = HISTORY_RETENTION_DAYS,
+  entryRetentionDays = ENTRY_RETENTION_DAYS
+) => {
   const cutoffKey = getDateKey(addDays(now, -Math.max(1, retentionDays) + 1));
+  const entryCutoffKey = getDateKey(addDays(now, -Math.max(1, entryRetentionDays) + 1));
   const trimmed: HydrationHistory = {};
+
   for (const [key, value] of Object.entries(history)) {
-    if (key >= cutoffKey) {
+    if (key < cutoffKey) {
+      continue; // drop entire day (existing behaviour)
+    }
+    if (key < entryCutoffKey && value.entries) {
+      // Strip entries but keep summary
+      const { entries: _entries, ...summary } = value;
+      trimmed[key] = summary;
+    } else {
       trimmed[key] = value;
     }
   }
+
   return trimmed;
 };
 
+// ---------------------------------------------------------------------------
+// §8 — updateHistoryForLog
+// Creates a LogEntry and derives totalMl/logHours from entries.
+// ---------------------------------------------------------------------------
 export const updateHistoryForLog = (
   history: HydrationHistory,
   now: Date,
@@ -68,18 +135,32 @@ export const updateHistoryForLog = (
   if (!Number.isFinite(amountMl) || amountMl <= 0) {
     return history;
   }
+
   const dateKey = getDateKey(now);
   const existing = history[dateKey];
-  const logHours = ensureLogHours(existing?.logHours);
-  const hour = now.getHours();
-  logHours[hour] += 1;
+
+  // Create the new entry — ID is timestamp-ms + 4-char random suffix for
+  // same-millisecond safety (no external dependency needed).
+  const newEntry: LogEntry = {
+    id: `${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: now.toISOString(),
+    amountMl,
+  };
+
+  // Append to existing entries (or start fresh)
+  const existingEntries = existing?.entries ?? [];
+  const nextEntries = [...existingEntries, newEntry];
+
+  // Derive aggregates from entries (enforces the invariant)
+  const { totalMl, logHours } = deriveAggregates(nextEntries);
 
   const next: HydrationDaySummary = {
     date: dateKey,
-    totalMl: Math.max(0, (existing?.totalMl ?? 0) + amountMl),
+    totalMl,
     goalMl,
     goodThresholdMl,
     logHours,
+    entries: nextEntries,
   };
 
   return {
@@ -88,35 +169,49 @@ export const updateHistoryForLog = (
   };
 };
 
+// ---------------------------------------------------------------------------
+// §4.2 — undoHistoryForLog
+// Remove the most recent entry from the given day and re-derive aggregates.
+// Pure function — no store, no side effects.
+// ---------------------------------------------------------------------------
 export const undoHistoryForLog = (
   history: HydrationHistory,
-  now: Date,
-  amountMl: number
-) => {
-  if (!Number.isFinite(amountMl) || amountMl <= 0) {
-    return history;
-  }
-  const dateKey = getDateKey(now);
-  const existing = history[dateKey];
-  if (!existing) {
-    return history;
-  }
-  const logHours = ensureLogHours(existing.logHours);
-  const hour = now.getHours();
-  logHours[hour] = Math.max(0, logHours[hour] - 1);
+  dateKey: string
+): HydrationHistory => {
+  const daySummary = history[dateKey];
 
-  const next: HydrationDaySummary = {
-    ...existing,
-    totalMl: Math.max(0, existing.totalMl - amountMl),
+  // Can only undo if day has entries
+  if (!daySummary?.entries || daySummary.entries.length === 0) {
+    return history;
+  }
+
+  // Sort descending by timestamp; remove the most recent (index 0 after sort)
+  const sortedEntries = [...daySummary.entries].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  const remainingEntries = sortedEntries.slice(1);
+
+  // Derive new aggregates from remaining entries
+  const { totalMl, logHours } = deriveAggregates(remainingEntries);
+
+  const nextSummary: HydrationDaySummary = {
+    ...daySummary,
+    // entries=undefined when empty (no empty array stored, consistent with normalizeHistory)
+    entries: remainingEntries.length > 0 ? remainingEntries : undefined,
+    totalMl,
     logHours,
   };
 
   return {
     ...history,
-    [dateKey]: next,
+    [dateKey]: nextSummary,
   };
 };
 
+// ---------------------------------------------------------------------------
+// §10 — resetHistoryForDate
+// Clear entries on reset — undefined = fresh start.
+// ---------------------------------------------------------------------------
 export const resetHistoryForDate = (history: HydrationHistory, dateKey: string, goalMl: number, goodThresholdMl: number) => {
   return {
     ...history,
@@ -126,6 +221,7 @@ export const resetHistoryForDate = (history: HydrationHistory, dateKey: string, 
       goalMl,
       goodThresholdMl,
       logHours: Array.from({ length: 24 }, () => 0),
+      // entries deliberately omitted (undefined) — reset means fresh start
     },
   };
 };
@@ -232,6 +328,9 @@ export const computeStreakStats = (
   };
 };
 
+// ---------------------------------------------------------------------------
+// §7 — computeBestHours (original — kept untouched, ranks by tap count)
+// ---------------------------------------------------------------------------
 export const computeBestHours = (history: HydrationHistory, now: Date, days = 30) => {
   const keys = buildDateKeys(now, days);
   const counts = Array.from({ length: 24 }, () => 0);
@@ -250,5 +349,46 @@ export const computeBestHours = (history: HydrationHistory, now: Date, days = 30
     .sort((a, b) => b.value - a.value)
     .slice(0, 3)
     .map((item) => item.hour);
+  return ranked;
+};
+
+// ---------------------------------------------------------------------------
+// §7.2 — computeBestHoursByVolume
+// Ranks hours by total ml consumed (not tap count). Uses exact entry data
+// when available; falls back to proportional distribution via logHours for
+// summary-only days.
+// ---------------------------------------------------------------------------
+export const computeBestHoursByVolume = (history: HydrationHistory, now: Date, days = 30) => {
+  const keys = buildDateKeys(now, days);
+  const volumes = Array.from({ length: 24 }, () => 0);
+
+  for (const key of keys) {
+    const entry = history[key];
+    if (!entry) continue;
+
+    if (entry.entries && entry.entries.length > 0) {
+      // Exact per-entry volume
+      for (const e of entry.entries) {
+        const hour = new Date(e.timestamp).getHours();
+        volumes[hour] += e.amountMl;
+      }
+    } else {
+      // Fallback: distribute totalMl proportionally across logHours
+      const totalTaps = entry.logHours.reduce((a, b) => a + b, 0);
+      if (totalTaps > 0) {
+        entry.logHours.forEach((taps, h) => {
+          volumes[h] += (taps / totalTaps) * entry.totalMl;
+        });
+      }
+    }
+  }
+
+  const ranked = volumes
+    .map((vol, h) => ({ hour: h, volume: vol }))
+    .filter((item) => item.volume > 0)
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 3)
+    .map((item) => item.hour);
+
   return ranked;
 };

@@ -50,8 +50,8 @@ describe("Zustand Store Actions", () => {
     const added = useHydrationStore.getState();
     expect(added.progress.consumedMl).toBe(250);
 
-    const hour = new Date().getHours();
-    await added.undoLastLog(250, hour);
+    // §4.3 — undoLastLog takes no parameters; store reads last entry from entries
+    await added.undoLastLog();
     
     const reverted = useHydrationStore.getState();
     expect(reverted.progress.consumedMl).toBe(0);
@@ -95,10 +95,16 @@ describe("Zustand Store Actions", () => {
     expect(updated.progress.consumedMl).toBe(0);
   });
 
-  it("updateQuickLogPresets updates and dedups presets", async () => {
+  it("updateQuickLogPresets stores presets as-is (dedup is caller's responsibility)", async () => {
     const store = useHydrationStore.getState();
-    await store.updateQuickLogPresets([100, 100, 200, 300]);
+    const presets = [
+      { id: "a", name: "A", icon: "cup-water", amountMl: 100 },
+      { id: "b", name: "B", icon: "cup-water", amountMl: 200 },
+      { id: "c", name: "C", icon: "cup-water", amountMl: 300 },
+    ];
+    await store.updateQuickLogPresets(presets);
     const updated = useHydrationStore.getState();
-    expect(updated.quickLog.presets).toEqual([100, 200, 300]);
+    // Store does NOT dedup — validation and dedup is caller's responsibility.
+    expect(updated.quickLog.presets).toEqual(presets);
   });
 });

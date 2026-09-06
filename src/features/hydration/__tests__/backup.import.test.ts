@@ -238,7 +238,12 @@ describe("importBackup", () => {
     const state = useHydrationStore.getState();
     expect(state.settings.targetLiters).toBe(2.5);
     expect(state.settings.windowStart).toBe("08:00");
-    expect(state.quickLog.presets).toEqual([150, 300, 400]);
+    // normalizeQuickLog converts raw number presets from backup to DrinkPreset objects
+    expect(state.quickLog.presets).toEqual([
+      { id: "legacy-0-150", name: "150", icon: "cup-water", amountMl: 150 },
+      { id: "legacy-1-300", name: "300", icon: "cup-water", amountMl: 300 },
+      { id: "legacy-2-400", name: "400", icon: "cup-water", amountMl: 400 },
+    ]);
     // onboarding must be set to completed: true
     expect(state.onboarding.completed).toBe(true);
   });

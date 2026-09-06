@@ -3,7 +3,7 @@ import { DrinkPreset, HydrationSettings } from "../features/hydration/domain/typ
 export const APP_NAME = "Siply";
 export const TAGLINE = "drink water, on time.";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const MIN_INTERVAL_MINUTES = 30;
 export const MAX_NOTIFICATIONS_PER_DAY = 48;
@@ -20,6 +20,7 @@ export const DEFAULT_QUICK_LOG_PRESETS: DrinkPreset[] = [
 export const QUICK_LOG_MIN_PRESETS = 3;
 export const QUICK_LOG_MAX_PRESETS = 8;
 export const HISTORY_RETENTION_DAYS = 120;
+export const ENTRY_RETENTION_DAYS = 7;
 export const ENABLE_DIAGNOSTICS =
   process.env.EXPO_PUBLIC_SIPLY_DIAGNOSTICS === "1" ||
   process.env.EXPO_PUBLIC_SIPLY_DIAGNOSTICS === "true";

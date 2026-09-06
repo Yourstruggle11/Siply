@@ -13,12 +13,17 @@ import { formatLiquid } from "../../src/core/units";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
+import type { LogEntry } from "../../src/features/hydration/domain/types";
 
-interface MockLogEntry {
+// ---------------------------------------------------------------------------
+// Timeline entry shape used for rendering.
+// "estimated" = reconstructed from logHours when entries are absent (legacy).
+// ---------------------------------------------------------------------------
+interface TimelineEntry {
   id: string;
   timestamp: Date;
-  amount: number;
-  isReconstructed?: boolean;
+  amountMl: number;
+  isEstimated: boolean;
 }
 
 export default function HomeScreen() {
@@ -34,33 +39,49 @@ export default function HomeScreen() {
   const plan = useHydrationPlan();
   const [showAddAmount, setShowAddAmount] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
-  
-  const [sessionLogs, setSessionLogs] = useState<MockLogEntry[]>([]);
 
-  useEffect(() => {
-    if (globalProgress.consumedMl > 0 && sessionLogs.length === 0) {
-      const today = getDateKey(new Date());
-      const todayHistory = history[today];
-      if (todayHistory && todayHistory.logHours) {
-        const reconstructed: MockLogEntry[] = [];
-        todayHistory.logHours.forEach((amount, hourIndex) => {
-          if (amount > 0) {
-            const timeStr = `${hourIndex.toString().padStart(2, "0")}:00`;
-            reconstructed.push({
-              id: `reconstructed-${hourIndex}`,
-              timestamp: setTimeOnDate(new Date(), timeStr),
-              amount,
-              isReconstructed: true,
-            });
-          }
-        });
-        if (reconstructed.length > 0) {
-          reconstructed.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-          setSessionLogs(reconstructed);
-        }
-      }
+  // §6.4 — Timeline entries derived directly from store.
+  // history[today].entries is the source of truth for days within the
+  // retention window. Falls back to logHours reconstruction (marked
+  // estimated) only when entries are absent (pre-migration or same-day
+  // app update edge case).
+  const timelineEntries = useMemo<TimelineEntry[]>(() => {
+    const today = getDateKey(new Date());
+    const todayHistory = history[today];
+
+    if (todayHistory?.entries && todayHistory.entries.length > 0) {
+      // Exact entries — sorted newest-first for display
+      return [...todayHistory.entries]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .map((e: LogEntry) => ({
+          id: e.id,
+          timestamp: new Date(e.timestamp),
+          amountMl: e.amountMl,
+          isEstimated: false,
+        }));
     }
-  }, [globalProgress.consumedMl, history, sessionLogs.length]);
+
+    // Fallback: reconstruct from logHours (estimated, non-undoable)
+    if (todayHistory?.logHours) {
+      const reconstructed: TimelineEntry[] = [];
+      todayHistory.logHours.forEach((tapCount, hourIndex) => {
+        if (tapCount > 0) {
+          // logHours records tap count, not ml — we cannot recover individual
+          // amounts. Show tap count in display; mark as estimated.
+          const timeStr = `${hourIndex.toString().padStart(2, "0")}:00`;
+          reconstructed.push({
+            id: `estimated-${hourIndex}`,
+            timestamp: setTimeOnDate(new Date(), timeStr),
+            amountMl: tapCount, // tap count, not ml — displayed with "estimated" label
+            isEstimated: true,
+          });
+        }
+      });
+      return reconstructed.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    }
+
+    return [];
+  }, [history]);
 
   const progressPct = useMemo(() => {
     if (plan.targetMl <= 0) return 0;
@@ -84,27 +105,21 @@ export default function HomeScreen() {
 
   const handleLog = async (amountMl: number) => {
     if (amountMl <= 0 || !Number.isFinite(amountMl)) return;
-    
+
     const wasMet = plan.targetMet;
     await addConsumed(amountMl);
-    
+
     const newTotal = globalProgress.consumedMl + amountMl;
     if (!wasMet && newTotal >= plan.targetMl) {
       void triggerSuccessHaptic();
     } else {
       void triggerLightHaptic();
     }
-
-    const logId = Date.now().toString();
-    setSessionLogs(prev => [
-      { id: logId, timestamp: new Date(), amount: amountMl },
-      ...prev,
-    ]);
   };
 
   const handleQuickAdd = () => handleLog(plan.mlPerReminder);
   const handlePresetLog = (amountMl: number) => handleLog(amountMl);
-  
+
   const handleCustomAdd = () => {
     const parsed = Number.parseInt(customAmount, 10);
     if (parsed) {
@@ -114,20 +129,18 @@ export default function HomeScreen() {
     }
   };
 
-  const handleUndo = (id: string, amount: number, timestamp: Date) => {
-    void undoLastLog(amount, timestamp.getHours());
-    setSessionLogs(prev => prev.filter(log => log.id !== id));
+  // §4.3 — undo: no parameters; store resolves the last entry internally
+  const handleUndo = () => {
+    void undoLastLog();
     void triggerLightHaptic();
   };
 
-  const isInitialEmptyState = sessionLogs.length === 0 && globalProgress.consumedMl === 0;
-  
   const todayDateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
     <Screen scroll>
       <View style={styles.container}>
-        
+
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.colors.textPrimary, ...theme.typography.displayLarge }]}>
@@ -155,7 +168,7 @@ export default function HomeScreen() {
         ) : null}
 
         {/* Hero Section */}
-        <View 
+        <View
           style={styles.heroSection}
           accessibilityLiveRegion="polite"
           accessibilityRole="text"
@@ -169,11 +182,11 @@ export default function HomeScreen() {
               {formatLiquid(plan.consumedMl, settings.displayUnit)} / {formatLiquid(plan.targetMl, settings.displayUnit)}
             </Text>
           </ProgressRing>
-          
+
           <View style={styles.mainCtaContainer}>
             <Button label={`I drank ${formatLiquid(plan.mlPerReminder, settings.displayUnit)}`} onPress={handleQuickAdd} />
-            <Pressable 
-              onPress={() => setShowAddAmount(!showAddAmount)} 
+            <Pressable
+              onPress={() => setShowAddAmount(!showAddAmount)}
               style={styles.customAddButton}
               accessibilityRole="button"
               accessibilityLabel={showAddAmount ? "Cancel custom amount" : "Add a custom amount"}
@@ -224,10 +237,10 @@ export default function HomeScreen() {
                     },
                   ]}
                 >
-                  <MaterialCommunityIcons 
-                    name={typeof preset === "object" && preset.icon ? (preset.icon as any) : "cup-water"} 
-                    size={20} 
-                    color={isActive ? theme.colors.accent : theme.colors.textPrimary} 
+                  <MaterialCommunityIcons
+                    name={typeof preset === "object" && preset.icon ? (preset.icon as any) : "cup-water"}
+                    size={20}
+                    color={isActive ? theme.colors.accent : theme.colors.textPrimary}
                     style={{ marginBottom: 4 }}
                   />
                   <Text
@@ -245,7 +258,7 @@ export default function HomeScreen() {
             })}
           </View>
         </AnimatedCard>
-        
+
         {/* Stats Card */}
         <AnimatedCard delay={160} style={styles.card}>
           <View style={styles.statRow}>
@@ -272,8 +285,8 @@ export default function HomeScreen() {
           <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.titleLarge, marginBottom: 16 }]}>
             Today's log
           </Text>
-          
-          {sessionLogs.length === 0 ? (
+
+          {timelineEntries.length === 0 ? (
             <AnimatedCard delay={200} style={styles.emptyStateCard}>
               <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.body, textAlign: "center", lineHeight: 22 }]}>
                 No logs yet today.{"\n"}Tap "I drank" above to add your first sip.
@@ -281,20 +294,30 @@ export default function HomeScreen() {
             </AnimatedCard>
           ) : (
             <View style={styles.timelineList}>
-              {sessionLogs.map((log, index) => (
-                <View key={log.id} style={styles.timelineRow}>
-                  <View style={[styles.timelineNode, { backgroundColor: theme.colors.accent }]} />
-                  {index < sessionLogs.length - 1 && <View style={[styles.timelineLine, { backgroundColor: theme.colors.border }]} />}
+              {timelineEntries.map((entry, index) => (
+                <View key={entry.id} style={styles.timelineRow}>
+                  <View style={[styles.timelineNode, { backgroundColor: entry.isEstimated ? theme.colors.textSecondary : theme.colors.accent }]} />
+                  {index < timelineEntries.length - 1 && <View style={[styles.timelineLine, { backgroundColor: theme.colors.border }]} />}
                   <View style={[styles.timelineCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                     <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.body }]}>
-                      {formatLiquid(log.amount, settings.displayUnit)}
+                      {entry.isEstimated
+                        ? `${entry.amountMl} tap${entry.amountMl !== 1 ? "s" : ""}`
+                        : formatLiquid(entry.amountMl, settings.displayUnit)}
                     </Text>
-                    <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
-                      {formatTimeForDisplay(log.timestamp)}
-                    </Text>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
+                        {formatTimeForDisplay(entry.timestamp)}
+                      </Text>
+                      {entry.isEstimated && (
+                        <Text style={[{ color: theme.colors.textSecondary, fontSize: 10, fontStyle: "italic" }]}>
+                          estimated
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                  {index === 0 && !log.isReconstructed && (
-                    <Pressable onPress={() => handleUndo(log.id, log.amount, log.timestamp)} style={styles.undoButton}>
+                  {/* Undo available only on the most recent non-estimated entry */}
+                  {index === 0 && !entry.isEstimated && (
+                    <Pressable onPress={handleUndo} style={styles.undoButton}>
                       <Text style={[{ color: theme.colors.accent, ...theme.typography.caption }]}>Undo</Text>
                     </Pressable>
                   )}
