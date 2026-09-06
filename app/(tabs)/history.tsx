@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Share, StyleSheet, Text, View } from "react-native";
+import { Share, StyleSheet, Text, View, Pressable } from "react-native";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { Screen } from "../../src/shared/components/Screen";
@@ -11,10 +11,13 @@ import { ShareCard } from "../../src/features/hydration/ui/components/ShareCard"
 import { CalendarHeatmap } from "../../src/shared/components/CalendarHeatmap";
 import { BottomSheet } from "../../src/shared/components/BottomSheet";
 import { HourlyBarChart } from "../../src/shared/components/HourlyBarChart";
+import { LineChart, ChartType } from "../../src/shared/components/LineChart";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { litersToMl } from "../../src/features/hydration/domain/calculations";
+import { formatLiquid } from "../../src/core/units";
 import {
+  buildDateKeys,
   computeBestHours,
   computeStreakStats,
   getSummaryForDate,
@@ -46,6 +49,7 @@ export default function HistoryScreen() {
   const [shareReady, setShareReady] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [chartType, setChartType] = useState<ChartType>("line");
   
   const shareEnabled = Constants.appOwnership !== "expo";
   const shareViewRef = useRef<View>(null);
@@ -70,6 +74,23 @@ export default function HistoryScreen() {
   );
 
   const bestHours = useMemo(() => computeBestHours(history, new Date(), 30), [history]);
+
+  const chartData90 = useMemo(() => {
+    const keys = buildDateKeys(new Date(), 90);
+    return keys.map(k => history[k]?.totalMl || 0);
+  }, [history]);
+
+  const averageIntake = useMemo(() => {
+    const validDays = chartData90.filter(v => v > 0);
+    if (validDays.length === 0) return 0;
+    return validDays.reduce((a, b) => a + b, 0) / validDays.length;
+  }, [chartData90]);
+
+  const goalHitRate = useMemo(() => {
+    if (chartData90.length === 0) return 0;
+    const hits = chartData90.filter(v => v >= goalMl).length;
+    return Math.round((hits / chartData90.length) * 100);
+  }, [chartData90, goalMl]);
 
   const selectedSummary = useMemo(() => {
     if (!selectedDate) return null;
@@ -161,6 +182,36 @@ export default function HistoryScreen() {
         <View style={styles.container}>
           <PulsingTitle text="History & Insights" style={styles.title} />
 
+          {/* New 90-Day Trend Chart */}
+          <AnimatedCard style={styles.section} delay={50}>
+            <View style={styles.chartHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+                90-Day Trend
+              </Text>
+              <View style={styles.chartToggle}>
+                <Pressable onPress={() => setChartType("line")} style={[styles.toggleBtn, chartType === "line" && { backgroundColor: theme.colors.surfaceElevated }]}>
+                  <Text style={{ color: chartType === "line" ? theme.colors.accent : theme.colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Line</Text>
+                </Pressable>
+                <Pressable onPress={() => setChartType("bar")} style={[styles.toggleBtn, chartType === "bar" && { backgroundColor: theme.colors.surfaceElevated }]}>
+                  <Text style={{ color: chartType === "bar" ? theme.colors.accent : theme.colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Bar</Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.trendStats}>
+              <View>
+                <Text style={[styles.trendStatValue, { color: theme.colors.textPrimary }]}>{formatLiquid(averageIntake, settings.displayUnit)}</Text>
+                <Text style={[styles.trendStatLabel, { color: theme.colors.textSecondary }]}>Avg Daily Intake</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.trendStatValue, { color: theme.colors.textPrimary }]}>{goalHitRate}%</Text>
+                <Text style={[styles.trendStatLabel, { color: theme.colors.textSecondary }]}>Goal Hit Rate</Text>
+              </View>
+            </View>
+            <View style={{ marginTop: 16 }}>
+              <LineChart data={chartData90} type={chartType} height={140} goalMl={goalMl} />
+            </View>
+          </AnimatedCard>
+
           {/* Calendar Heatmap */}
           <AnimatedCard style={styles.section} delay={100}>
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
@@ -244,7 +295,7 @@ export default function HistoryScreen() {
             <View style={styles.sheetStatRow}>
               <View>
                 <Text style={[styles.sheetStatValue, { color: theme.colors.textPrimary }]}>
-                  {selectedSummary.totalMl.toLocaleString()} ml
+                  {formatLiquid(selectedSummary.totalMl, settings.displayUnit)}
                 </Text>
                 <Text style={[styles.sheetStatLabel, { color: theme.colors.textSecondary }]}>
                   Total Consumed
@@ -322,5 +373,33 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
     marginBottom: 8,
+  },
+  chartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  chartToggle: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: 'rgba(150, 150, 150, 0.2)',
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  toggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  trendStats: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  trendStatValue: {
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  trendStatLabel: {
+    fontSize: 12,
   }
 });

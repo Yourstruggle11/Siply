@@ -45,25 +45,7 @@ export const normalizeHistory = (input: unknown): HydrationHistory => {
   return result;
 };
 
-export const normalizeQuickLogPresets = (input: unknown, fallback: number[]) => {
-  const inputRecord = input && typeof input === "object" ? (input as { presets?: unknown[] }) : null;
-  const rawPresets = Array.isArray(input)
-    ? input
-    : Array.isArray(inputRecord?.presets)
-      ? inputRecord.presets
-      : null;
-  const cleaned = Array.isArray(rawPresets)
-    ? rawPresets
-        .map((value) => (typeof value === "number" ? value : Number.parseInt(String(value), 10)))
-        .filter((value) => Number.isFinite(value) && value > 0)
-    : fallback.slice();
-  const deduped = Array.from(new Set(cleaned));
-  const bounded = deduped.slice(0, QUICK_LOG_MAX_PRESETS);
-  if (bounded.length >= QUICK_LOG_MIN_PRESETS) {
-    return bounded;
-  }
-  return fallback.slice(0, QUICK_LOG_MAX_PRESETS);
-};
+
 
 export const trimHistory = (history: HydrationHistory, now: Date, retentionDays = HISTORY_RETENTION_DAYS) => {
   const cutoffKey = getDateKey(addDays(now, -Math.max(1, retentionDays) + 1));

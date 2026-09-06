@@ -12,7 +12,7 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
       return BackgroundTask.BackgroundTaskResult.Success;
     }
 
-    const result = await rescheduleNotifications(snapshot.settings, snapshot.progress.consumedMl);
+    const result = await rescheduleNotifications(snapshot.settings, snapshot.progress.consumedMl, new Date(), snapshot.quickLog.lastLogAt);
     
     if (result.success && result.scheduled > 0) {
       return BackgroundTask.BackgroundTaskResult.Success;

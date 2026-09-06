@@ -168,7 +168,8 @@ export const cancelAllNotifications = async () => {
 export const scheduleNotifications = async (
   settings: HydrationSettings,
   consumedMl: number,
-  now = new Date()
+  now = new Date(),
+  lastLogAt?: string | null
 ) => {
   const errors: string[] = [];
   if (!settings || typeof settings.soundEnabled !== "boolean") {
@@ -221,7 +222,37 @@ export const scheduleNotifications = async (
   const channelId = getChannelId(settings.soundEnabled);
   const factor = settings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
   const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
-  const baseSchedule = schedule.slots.slice(0, maxBase);
+  let baseSchedule = schedule.slots.slice(0, maxBase);
+
+  // Smart Reminder Skip: if logged within the last 15 minutes, skip the immediate next slot
+  if (lastLogAt && baseSchedule.length > 0) {
+    const lastLogTime = new Date(lastLogAt).getTime();
+    if (now.getTime() - lastLogTime <= 15 * 60 * 1000) {
+      baseSchedule = baseSchedule.slice(1);
+      
+      void recordScheduleDiagnostics({
+        source: "smart_skip",
+        at: new Date().toISOString(),
+        consumedMl,
+        settings: {
+          targetLiters: settings.targetLiters,
+          windowStart: settings.windowStart,
+          windowEnd: settings.windowEnd,
+          sipMl: settings.sipMl,
+          escalationEnabled: settings.escalationEnabled,
+          soundEnabled: settings.soundEnabled,
+        },
+        result: {
+          success: true,
+          requested: 1,
+          scheduled: 0,
+          failed: 0,
+          errors: ["Skipped next reminder because user logged within last 15 minutes."],
+        },
+      });
+    }
+  }
+
   const horizonEnd = addMinutes(now, 24 * 60);
 
   if (Platform.OS === "ios") {
@@ -317,7 +348,8 @@ export const scheduleNotifications = async (
 export const rescheduleNotifications = async (
   settings: HydrationSettings,
   consumedMl: number,
-  now = new Date()
+  now = new Date(),
+  lastLogAt?: string | null
 ) => {
   const errors: string[] = [];
   try {
@@ -326,7 +358,7 @@ export const rescheduleNotifications = async (
     errors.push(error instanceof Error ? error.message : "Failed to cancel notifications.");
   }
 
-  const result = await scheduleNotifications(settings, consumedMl, now);
+  const result = await scheduleNotifications(settings, consumedMl, now, lastLogAt);
 
   try {
     const presented = await Notifications.getPresentedNotificationsAsync();

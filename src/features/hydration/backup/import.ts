@@ -171,7 +171,7 @@ export async function processBackupUri(fileUri: string): Promise<void> {
 
   // Reschedule notifications to sync with the newly imported settings/progress.
   try {
-    await rescheduleNotifications(normSettings, normProgress.consumedMl);
+    await rescheduleNotifications(normSettings, normProgress.consumedMl, new Date(), normQuickLog.lastLogAt);
   } catch {
     // Reschedule failure should not fail the import — silently ignore.
   }

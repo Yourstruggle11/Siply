@@ -89,10 +89,11 @@ const RootLayoutNav = () => {
   const segments = useSegments();
   const theme = useTheme();
   const settings = useHydrationStore((s) => s.settings);
+  const progress = useHydrationStore((s) => s.progress);
+  const quickLog = useHydrationStore((s) => s.quickLog);
   const onboarding = useHydrationStore((s) => s.onboarding);
   const hydrated = useHydrationStore((s) => s.hydrated);
   const refreshProgressDate = useHydrationStore((s) => s.refreshProgressDate);
-  const progress = useHydrationStore((s) => s.progress);
   const addConsumed = useHydrationStore((s) => s.addConsumed);
   const [routeReady, setRouteReady] = useState(false);
 
@@ -158,12 +159,13 @@ const RootLayoutNav = () => {
     if (!hydrated || !onboarding.completed) {
       return;
     }
-    void rescheduleNotifications(settings, progress.consumedMl);
+    void rescheduleNotifications(settings, progress.consumedMl, new Date(), quickLog.lastLogAt);
   }, [
     hydrated,
     onboarding.completed,
     settings,
     progress.consumedMl,
+    quickLog.lastLogAt,
     ensureNotificationPermission,
   ]);
 
@@ -215,7 +217,7 @@ const RootLayoutNav = () => {
     void refreshProgressDate().then((didChange) => {
       if (hydrated && onboarding.completed) {
         if (!didChange) {
-          void rescheduleNotifications(settings, progress.consumedMl);
+          void rescheduleNotifications(settings, progress.consumedMl, new Date(), quickLog.lastLogAt);
         }
         void ensureNotificationPermission();
       }

@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const DIAGNOSTICS_KEY = "siply:notification_diagnostics:v1";
 
 export type ScheduleDiagnostics = {
-  source: "reschedule";
+  source: "reschedule" | "smart_skip";
   at: string;
   consumedMl: number;
   settings: {

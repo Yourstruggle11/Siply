@@ -32,6 +32,7 @@ export default function SettingsScreen() {
   
   const settings = useHydrationStore((s) => s.settings);
   const progress = useHydrationStore((s) => s.progress);
+  const quickLog = useHydrationStore((s) => s.quickLog);
   const updateSettings = useHydrationStore((s) => s.updateSettings);
   const resetToday = useHydrationStore((s) => s.resetToday);
 
@@ -271,7 +272,7 @@ export default function SettingsScreen() {
           <View style={styles.actionGroup}>
             <Button
               label="Reschedule notifications"
-              onPress={() => void rescheduleNotifications(settings, progress.consumedMl)}
+              onPress={() => void rescheduleNotifications(settings, progress.consumedMl, new Date(), quickLog.lastLogAt)}
             />
             <Button
               label="Cancel all notifications"

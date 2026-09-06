@@ -6,6 +6,7 @@ export type HydrationSettings = {
   escalationEnabled: boolean;
   soundEnabled: boolean;
   appearanceMode: "light" | "dark" | "system";
+  displayUnit: "ml" | "fl oz" | "cups";
   gentleGoalEnabled: boolean;
   gentleGoalThreshold: number;
 };
@@ -19,9 +20,17 @@ export type OnboardingState = {
   completed: boolean;
 };
 
+export type DrinkPreset = {
+  id: string;
+  name: string;
+  icon: string;
+  amountMl: number;
+};
+
 export type QuickLogState = {
-  presets: number[];
+  presets: DrinkPreset[];
   lastUsedMl: number | null;
+  lastLogAt: string | null;
 };
 
 export type HydrationDaySummary = {

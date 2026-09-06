@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View, Pressable, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "../../src/shared/components/Screen";
 import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
 import { PulsingTitle } from "../../src/shared/components/PulsingTitle";
@@ -12,6 +12,16 @@ import { TimeField } from "../../src/shared/components/TimeField";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { QUICK_LOG_MAX_PRESETS, QUICK_LOG_MIN_PRESETS } from "../../src/core/constants";
+import { formatLiquid, convertFromUnit } from "../../src/core/units";
+import { DrinkPreset } from "../../src/features/hydration/domain/types";
+
+const PREDEFINED_DRINKS = [
+  { id: "water", name: "Water", icon: "cup-water" },
+  { id: "coffee", name: "Coffee", icon: "coffee" },
+  { id: "tea", name: "Tea", icon: "tea" },
+  { id: "juice", name: "Juice", icon: "glass-tulip" },
+  { id: "other", name: "Other", icon: "cup" },
+];
 
 export default function YouScreen() {
   const theme = useTheme();
@@ -27,6 +37,7 @@ export default function YouScreen() {
     target: settings.targetLiters.toString(),
     windowStart: settings.windowStart,
     windowEnd: settings.windowEnd,
+    displayUnit: settings.displayUnit,
     gentleGoalEnabled: settings.gentleGoalEnabled,
     gentleGoalThreshold: settings.gentleGoalThreshold.toString(),
   });
@@ -37,7 +48,9 @@ export default function YouScreen() {
   const [calcClimateHot, setCalcClimateHot] = useState(false);
 
   // Preset State
-  const [newPreset, setNewPreset] = useState("");
+  const [presetType, setPresetType] = useState<string>("water");
+  const [customPresetName, setCustomPresetName] = useState("");
+  const [presetAmount, setPresetAmount] = useState("");
 
   // Sync draft when settings change
   useEffect(() => {
@@ -45,6 +58,7 @@ export default function YouScreen() {
       target: settings.targetLiters.toString(),
       windowStart: settings.windowStart,
       windowEnd: settings.windowEnd,
+      displayUnit: settings.displayUnit,
       gentleGoalEnabled: settings.gentleGoalEnabled,
       gentleGoalThreshold: settings.gentleGoalThreshold.toString(),
     });
@@ -55,6 +69,7 @@ export default function YouScreen() {
       draft.target !== settings.targetLiters.toString() ||
       draft.windowStart !== settings.windowStart ||
       draft.windowEnd !== settings.windowEnd ||
+      draft.displayUnit !== settings.displayUnit ||
       draft.gentleGoalEnabled !== settings.gentleGoalEnabled ||
       draft.gentleGoalThreshold !== settings.gentleGoalThreshold.toString()
     );
@@ -68,6 +83,7 @@ export default function YouScreen() {
       targetLiters: Number.isFinite(parsedTarget) && parsedTarget > 0 ? parsedTarget : settings.targetLiters,
       windowStart: draft.windowStart,
       windowEnd: draft.windowEnd,
+      displayUnit: draft.displayUnit,
       gentleGoalEnabled: draft.gentleGoalEnabled,
       gentleGoalThreshold: Number.isFinite(parsedGentle) && parsedGentle >= 50 && parsedGentle <= 100 
         ? parsedGentle 
@@ -77,15 +93,26 @@ export default function YouScreen() {
 
   const handleAddPreset = () => {
     if (quickLog.presets.length >= QUICK_LOG_MAX_PRESETS) return;
-    const parsed = Number.parseInt(newPreset, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
-    if (quickLog.presets.includes(parsed)) {
-      setNewPreset("");
-      return;
-    }
-    const next = [...quickLog.presets, parsed];
+    const amountVal = Number.parseFloat(presetAmount);
+    if (!Number.isFinite(amountVal) || amountVal <= 0) return;
+
+    // Convert back to ml for storage
+    const amountMl = Math.round(convertFromUnit(amountVal, settings.displayUnit));
+
+    const selectedDrink = PREDEFINED_DRINKS.find(d => d.id === presetType) || PREDEFINED_DRINKS[0];
+    const finalName = presetType === "other" && customPresetName.trim() !== "" ? customPresetName.trim() : selectedDrink.name;
+
+    const newPreset: DrinkPreset = {
+      id: `preset-${Date.now()}`,
+      name: finalName,
+      icon: selectedDrink.icon,
+      amountMl,
+    };
+
+    const next = [...quickLog.presets, newPreset];
     void updateQuickLogPresets(next);
-    setNewPreset("");
+    setPresetAmount("");
+    setCustomPresetName("");
   };
 
   const movePreset = (index: number, direction: -1 | 1) => {
@@ -143,13 +170,38 @@ export default function YouScreen() {
         ) : null}
 
         <AnimatedCard style={styles.section} delay={100}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily target</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily target & Units</Text>
           <Field
             label="Target liters"
             value={draft.target}
             onChangeText={(value) => setDraft((prev) => ({ ...prev, target: value }))}
             keyboardType="decimal-pad"
           />
+          <Text style={[styles.helper, { color: theme.colors.textSecondary, marginTop: 12 }]}>Display Unit</Text>
+          <View style={styles.optionRow}>
+            {(["ml", "fl oz", "cups"] as const).map((unit) => (
+              <Pressable
+                key={`unit-${unit}`}
+                onPress={() => setDraft(prev => ({ ...prev, displayUnit: unit }))}
+                style={[
+                  styles.optionButton,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: draft.displayUnit === unit ? theme.colors.accent : theme.colors.surface,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    { color: draft.displayUnit === unit ? theme.colors.surface : theme.colors.textPrimary },
+                  ]}
+                >
+                  {unit}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </AnimatedCard>
 
         <AnimatedCard style={styles.section} delay={140}>
@@ -261,15 +313,26 @@ export default function YouScreen() {
         <AnimatedCard style={styles.section} delay={260}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Quick log presets</Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
-            Add, remove, or reorder your cup sizes.
+            Add, remove, or reorder your drink presets.
           </Text>
           <View style={styles.presetList}>
-            {quickLog.presets.map((amount, index) => (
+            {quickLog.presets.map((preset, index) => {
+              const amount = typeof preset === "number" ? preset : preset.amountMl;
+              const name = typeof preset === "object" ? preset.name : `${amount}`;
+              const icon = typeof preset === "object" ? preset.icon : "cup-water";
+              const id = typeof preset === "object" && preset.id ? preset.id : `preset-${index}-${amount}`;
+              return (
               <View
-                key={`preset-row-${amount}-${index}`}
+                key={`preset-row-${id}-${index}`}
                 style={[styles.presetRow, { borderColor: theme.colors.border }]}
               >
-                <Text style={[styles.presetLabel, { color: theme.colors.textPrimary }]}>{amount} ml</Text>
+                <View style={styles.presetLabelRow}>
+                  <MaterialCommunityIcons name={icon as any} size={20} color={theme.colors.textPrimary} style={{ marginRight: 8 }} />
+                  <Text style={[styles.presetLabel, { color: theme.colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
+                  <Text style={[{ color: theme.colors.textSecondary, marginLeft: 8, ...theme.typography.caption }]}>
+                    {formatLiquid(amount, settings.displayUnit)}
+                  </Text>
+                </View>
                 <View style={styles.presetActions}>
                   <Pressable
                     onPress={() => movePreset(index, -1)}
@@ -304,23 +367,70 @@ export default function YouScreen() {
                   </Pressable>
                 </View>
               </View>
-            ))}
+            )})}
           </View>
-          <View style={styles.presetAddRow}>
-            <View style={styles.presetAddField}>
-              <Field
-                label="Add cup size (ml)"
-                value={newPreset}
-                onChangeText={setNewPreset}
-                keyboardType="number-pad"
-                placeholder="150"
+          
+          <View style={[styles.presetAddContainer, { borderColor: theme.colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 8 }]}>Add New Preset</Text>
+            
+            <View style={[styles.optionRow, { flexWrap: 'wrap', marginBottom: 12 }]}>
+              {PREDEFINED_DRINKS.map((drink) => (
+                <Pressable
+                  key={`drink-${drink.id}`}
+                  onPress={() => setPresetType(drink.id)}
+                  style={[
+                    styles.drinkOptionButton,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: presetType === drink.id ? theme.colors.accent : theme.colors.surface,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons 
+                    name={drink.icon as any} 
+                    size={18} 
+                    color={presetType === drink.id ? theme.colors.surface : theme.colors.textPrimary} 
+                    style={{ marginBottom: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.optionText,
+                      { color: presetType === drink.id ? theme.colors.surface : theme.colors.textPrimary, fontSize: 12 },
+                    ]}
+                  >
+                    {drink.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {presetType === "other" && (
+              <View style={{ marginBottom: 12 }}>
+                <Field
+                  label="Custom drink name"
+                  value={customPresetName}
+                  onChangeText={setCustomPresetName}
+                  placeholder="e.g. Protein Shake"
+                />
+              </View>
+            )}
+
+            <View style={styles.presetAddRow}>
+              <View style={styles.presetAddField}>
+                <Field
+                  label={`Amount (${settings.displayUnit})`}
+                  value={presetAmount}
+                  onChangeText={setPresetAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="250"
+                />
+              </View>
+              <Button
+                label="Add"
+                onPress={handleAddPreset}
+                disabled={quickLog.presets.length >= QUICK_LOG_MAX_PRESETS}
               />
             </View>
-            <Button
-              label="Add"
-              onPress={handleAddPreset}
-              disabled={quickLog.presets.length >= QUICK_LOG_MAX_PRESETS}
-            />
           </View>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             {quickLog.presets.length}/{QUICK_LOG_MAX_PRESETS} presets
@@ -387,6 +497,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
   },
+  drinkOptionButton: {
+    width: '30%',
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
   optionText: {
     fontSize: 14,
     fontWeight: "500",
@@ -413,9 +531,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  presetLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 8,
+  },
   presetLabel: {
     fontSize: 16,
     fontWeight: "500",
+    flexShrink: 1,
   },
   presetActions: {
     flexDirection: "row",
@@ -429,6 +554,12 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 12,
+  },
+  presetAddContainer: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
   },
   presetAddRow: {
     flexDirection: "row",

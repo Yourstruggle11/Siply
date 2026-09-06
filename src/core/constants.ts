@@ -1,4 +1,4 @@
-import { HydrationSettings } from "../features/hydration/domain/types";
+import { DrinkPreset, HydrationSettings } from "../features/hydration/domain/types";
 
 export const APP_NAME = "Siply";
 export const TAGLINE = "drink water, on time.";
@@ -12,7 +12,11 @@ export const REMINDER_TARGET_ML = 200;
 export const NOTIFICATION_CATEGORY_ID = "siply-reminder";
 export const NOTIFICATION_ACTION_LOG = "LOG_DRINK";
 export const DEFAULT_GENTLE_GOAL_THRESHOLD = 60;
-export const DEFAULT_QUICK_LOG_PRESETS = [100, 200, 250, 500];
+export const DEFAULT_QUICK_LOG_PRESETS: DrinkPreset[] = [
+  { id: "preset-water-250", name: "Glass of Water", icon: "cup-water", amountMl: 250 },
+  { id: "preset-coffee-150", name: "Coffee", icon: "coffee", amountMl: 150 },
+  { id: "preset-bottle-500", name: "Water Bottle", icon: "bottle-tonic", amountMl: 500 },
+];
 export const QUICK_LOG_MIN_PRESETS = 3;
 export const QUICK_LOG_MAX_PRESETS = 8;
 export const HISTORY_RETENTION_DAYS = 120;
@@ -28,6 +32,7 @@ export const DEFAULT_SETTINGS: HydrationSettings = {
   escalationEnabled: true,
   soundEnabled: true,
   appearanceMode: "system",
+  displayUnit: "ml",
   gentleGoalEnabled: false,
   gentleGoalThreshold: DEFAULT_GENTLE_GOAL_THRESHOLD,
 };

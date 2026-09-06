@@ -9,6 +9,8 @@ import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
 import { formatTimeForDisplay, getDateKey, setTimeOnDate } from "../../src/core/time";
+import { formatLiquid } from "../../src/core/units";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
 
@@ -164,12 +166,12 @@ export default function HomeScreen() {
               {Math.round(progressPct * 100)}%
             </Text>
             <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, marginTop: 4 }]} importantForAccessibility="no">
-              {plan.consumedMl.toLocaleString()} / {plan.targetMl.toLocaleString()} ml
+              {formatLiquid(plan.consumedMl, settings.displayUnit)} / {formatLiquid(plan.targetMl, settings.displayUnit)}
             </Text>
           </ProgressRing>
           
           <View style={styles.mainCtaContainer}>
-            <Button label={`I drank ${plan.mlPerReminder} ml`} onPress={handleQuickAdd} />
+            <Button label={`I drank ${formatLiquid(plan.mlPerReminder, settings.displayUnit)}`} onPress={handleQuickAdd} />
             <Pressable 
               onPress={() => setShowAddAmount(!showAddAmount)} 
               style={styles.customAddButton}
@@ -187,7 +189,7 @@ export default function HomeScreen() {
           <AnimatedCard delay={100} style={styles.customAddCard}>
             <View style={styles.addRow}>
               <Field
-                label="Custom Amount (ml)"
+                label={`Custom Amount (${settings.displayUnit})`}
                 value={customAmount}
                 onChangeText={setCustomAmount}
                 keyboardType="number-pad"
@@ -204,14 +206,16 @@ export default function HomeScreen() {
             Quick log
           </Text>
           <View style={styles.quickLogRow}>
-            {quickLog.presets.map((amount) => {
+            {quickLog.presets.map((preset, index) => {
+              const amount = typeof preset === "number" ? preset : preset.amountMl;
+              const id = typeof preset === "object" && preset.id ? preset.id : `preset-${index}-${amount}`;
               const isActive = quickLog.lastUsedMl === amount;
               return (
                 <Pressable
-                  key={`preset-${amount}`}
+                  key={id}
                   onPress={() => handlePresetLog(amount)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Log ${amount} milliliters`}
+                  accessibilityLabel={`Log ${typeof preset === "object" ? preset.name : amount}, ${amount} milliliters`}
                   style={[
                     styles.presetButton,
                     {
@@ -220,12 +224,21 @@ export default function HomeScreen() {
                     },
                   ]}
                 >
+                  <MaterialCommunityIcons 
+                    name={typeof preset === "object" && preset.icon ? (preset.icon as any) : "cup-water"} 
+                    size={20} 
+                    color={isActive ? theme.colors.accent : theme.colors.textPrimary} 
+                    style={{ marginBottom: 4 }}
+                  />
                   <Text
                     style={[
                       { color: isActive ? theme.colors.accent : theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" },
                     ]}
                   >
-                    {amount} ml
+                    {typeof preset === "object" && preset.name ? preset.name : `${amount}`}
+                  </Text>
+                  <Text style={[{ color: isActive ? theme.colors.accent : theme.colors.textSecondary, fontSize: 11, marginTop: 2 }]}>
+                    {formatLiquid(amount, settings.displayUnit)}
                   </Text>
                 </Pressable>
               );
@@ -240,7 +253,7 @@ export default function HomeScreen() {
                <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Next sip</Text>
              </View>
              <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
-               ~{plan.mlPerReminder} ml ({plan.sipsPerReminder} sips)
+               ~{formatLiquid(plan.mlPerReminder, settings.displayUnit)} ({plan.sipsPerReminder} sips)
              </Text>
            </View>
            <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
@@ -273,7 +286,9 @@ export default function HomeScreen() {
                   <View style={[styles.timelineNode, { backgroundColor: theme.colors.accent }]} />
                   {index < sessionLogs.length - 1 && <View style={[styles.timelineLine, { backgroundColor: theme.colors.border }]} />}
                   <View style={[styles.timelineCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                    <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.body }]}>{log.amount} ml</Text>
+                    <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.body }]}>
+                      {formatLiquid(log.amount, settings.displayUnit)}
+                    </Text>
                     <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
                       {formatTimeForDisplay(log.timestamp)}
                     </Text>

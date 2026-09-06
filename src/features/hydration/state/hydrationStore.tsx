@@ -48,7 +48,7 @@ type HydrationActions = {
   resetToday: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refreshProgressDate: () => Promise<boolean>;
-  updateQuickLogPresets: (presets: number[]) => Promise<void>;
+  updateQuickLogPresets: (presets: DrinkPreset[]) => Promise<void>;
   setHydrated: (hydrated: boolean) => void;
 };
 
@@ -78,7 +78,7 @@ export const useHydrationStore = create<HydrationStore>()(
       settings: DEFAULT_SETTINGS,
       progress: { date: getDateKey(new Date()), consumedMl: 0 },
       onboarding: { completed: false },
-      quickLog: { presets: DEFAULT_QUICK_LOG_PRESETS, lastUsedMl: null },
+      quickLog: { presets: DEFAULT_QUICK_LOG_PRESETS, lastUsedMl: null, lastLogAt: null },
       history: {},
       hydrated: false,
 
@@ -120,6 +120,7 @@ export const useHydrationStore = create<HydrationStore>()(
         const quickLogNext: QuickLogState = {
           ...quickLog,
           lastUsedMl: amountMl > 0 ? amountMl : quickLog.lastUsedMl,
+          lastLogAt: amountMl > 0 ? new Date().toISOString() : quickLog.lastLogAt,
         };
 
         set({
@@ -184,14 +185,17 @@ export const useHydrationStore = create<HydrationStore>()(
         return true;
       },
 
-      updateQuickLogPresets: async (presets: number[]) => {
+      updateQuickLogPresets: async (presets: DrinkPreset[]) => {
         const { quickLog } = get();
-        const cleaned = presets
-          .map((value) => (typeof value === "number" ? value : Number.parseInt(String(value), 10)))
-          .filter((value) => Number.isFinite(value) && value > 0);
-        const deduped = Array.from(new Set(cleaned)).slice(0, QUICK_LOG_MAX_PRESETS);
-        const finalPresets =
-          deduped.length >= QUICK_LOG_MIN_PRESETS ? deduped : quickLog.presets;
+        // Assume passed presets are pre-validated by the UI
+        const finalPresets = presets.slice(0, QUICK_LOG_MAX_PRESETS);
+        
+        // Ensure minimum
+        if (finalPresets.length < QUICK_LOG_MIN_PRESETS) {
+          // Fill from defaults if they removed too many
+          const missing = QUICK_LOG_MIN_PRESETS - finalPresets.length;
+          finalPresets.push(...DEFAULT_QUICK_LOG_PRESETS.slice(0, missing));
+        }
 
         set({
           quickLog: {
