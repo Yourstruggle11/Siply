@@ -6,10 +6,11 @@ const ThemeContext = createContext<Theme>(lightTheme);
 
 type ThemeProviderProps = {
   children: React.ReactNode;
-  mode?: "light" | "dark";
+  mode?: "light" | "dark" | "system";
 };
 
 export const ThemeProvider = ({ children, mode }: ThemeProviderProps) => {
+  // @ts-ignore
   const colorScheme = useColorScheme();
   const theme = useMemo(() => {
     if (mode === "dark") {

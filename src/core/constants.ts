@@ -27,7 +27,7 @@ export const DEFAULT_SETTINGS: HydrationSettings = {
   sipMl: 15,
   escalationEnabled: true,
   soundEnabled: true,
-  appearanceMode: "dark",
+  appearanceMode: "system",
   gentleGoalEnabled: false,
   gentleGoalThreshold: DEFAULT_GENTLE_GOAL_THRESHOLD,
 };

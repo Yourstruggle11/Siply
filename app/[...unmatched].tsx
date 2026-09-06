@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { Screen } from "../src/shared/components/Screen";
-import { PrimaryButton } from "../src/features/hydration/ui/components/PrimaryButton";
+import { Button } from "../src/shared/components/Button";
 import { useTheme } from "../src/shared/theme/ThemeProvider";
 import { processBackupUri } from "../src/features/hydration/backup/import";
 
@@ -52,7 +52,7 @@ export default function UnmatchedRoute() {
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary, ...theme.typography.body }]}>
           This screen doesn't exist.
         </Text>
-        <PrimaryButton
+        <Button
           label="Go back home"
           onPress={() => router.replace("/")}
         />

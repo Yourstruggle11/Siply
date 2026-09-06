@@ -25,24 +25,17 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="insights"
+        name="history"
         options={{
-          title: "Insights",
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="insights" size={size} color={color} />,
+          title: "History",
+          tabBarIcon: ({ color, size }) => <MaterialIcons name="calendar-today" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="you"
         options={{
-          title: "Settings",
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="settings" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="help"
-        options={{
-          title: "Help",
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="help-outline" size={size} color={color} />,
+          title: "You",
+          tabBarIcon: ({ color, size }) => <MaterialIcons name="person" size={size} color={color} />,
         }}
       />
     </Tabs>

@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../../../shared/theme/ThemeProvider";
-import { ProgressRing } from "./ProgressRing";
+import { ProgressRing } from "../../../../shared/components/ProgressRing";
 
 type ShareCardProps = {
   progress: number;

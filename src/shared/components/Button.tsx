@@ -1,15 +1,15 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useTheme } from "../../../../shared/theme/ThemeProvider";
+import { useTheme } from "../theme/ThemeProvider";
 
-type PrimaryButtonProps = {
+type ButtonProps = {
   label: string;
   onPress: () => void;
   variant?: "primary" | "secondary" | "ghost";
   disabled?: boolean;
 };
 
-export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }: PrimaryButtonProps) => {
+export const Button = ({ label, onPress, variant = "primary", disabled }: ButtonProps) => {
   const theme = useTheme();
   
   let backgroundColor = theme.colors.accent;
@@ -30,6 +30,8 @@ export const PrimaryButton = ({ label, onPress, variant = "primary", disabled }:
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={({ pressed }) => [
         styles.button,
         {

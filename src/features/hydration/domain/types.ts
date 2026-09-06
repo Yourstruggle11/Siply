@@ -5,7 +5,7 @@ export type HydrationSettings = {
   sipMl: number;
   escalationEnabled: boolean;
   soundEnabled: boolean;
-  appearanceMode: "light" | "dark";
+  appearanceMode: "light" | "dark" | "system";
   gentleGoalEnabled: boolean;
   gentleGoalThreshold: number;
 };

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { Screen } from "../../src/shared/components/Screen";
-import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
+import { Button } from "../../src/shared/components/Button";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { DEFAULT_SETTINGS } from "../../src/core/constants";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
@@ -46,8 +46,8 @@ export default function PermissionsScreen() {
           </Text>
         </View>
         <View style={styles.actions}>
-          <PrimaryButton label="Allow notifications" onPress={handleAllow} />
-          <PrimaryButton label="Continue without sound" variant="secondary" onPress={handleContinueWithoutSound} />
+          <Button label="Allow notifications" onPress={handleAllow} />
+          <Button label="Continue without sound" variant="secondary" onPress={handleContinueWithoutSound} />
           <Pressable onPress={handleSkip}>
             <Text style={[styles.skip, { color: theme.colors.textSecondary }]}>Skip (use defaults)</Text>
           </Pressable>

@@ -23,6 +23,8 @@ export const ToggleRow = ({ label, helper, value, onValueChange }: ToggleRowProp
         trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
         thumbColor={theme.colors.surface}
         ios_backgroundColor={theme.colors.border}
+        accessibilityRole="switch"
+        accessibilityLabel={label}
       />
     </View>
   );

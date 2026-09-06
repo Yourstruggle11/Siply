@@ -1,6 +1,7 @@
+import "react-native-gesture-handler";
 import React, { useEffect, useMemo, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View, useColorScheme } from "react-native";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
@@ -142,9 +143,13 @@ const RootLayoutNav = () => {
       return;
     }
     if (rootSegment !== expectedRoot) {
-      setRouteReady(false);
-      router.replace(expectedRoot === "(tabs)" ? "/(tabs)" : "/(onboarding)");
-      return;
+      if (expectedRoot === "(tabs)" && rootSegment === "settings") {
+        // allow /settings if onboarding is complete
+      } else {
+        setRouteReady(false);
+        router.replace(expectedRoot === "(tabs)" ? "/(tabs)" : "/(onboarding)");
+        return;
+      }
     }
     setRouteReady(true);
   }, [expectedRoot, hydrated, router, segments]);
@@ -241,7 +246,13 @@ const RootLayoutNav = () => {
 
 const AppShell = () => {
   const settings = useHydrationStore((s) => s.settings);
-  const isDark = settings.appearanceMode === "dark";
+  // @ts-ignore
+  const colorScheme = useColorScheme();
+  
+  const isDark = 
+    settings.appearanceMode === "dark" || 
+    (settings.appearanceMode === "system" && colorScheme === "dark");
+
   const statusBarStyle = isDark ? "light" : "dark";
   const statusBarBackground = isDark ? darkColors.background : lightColors.background;
   return (

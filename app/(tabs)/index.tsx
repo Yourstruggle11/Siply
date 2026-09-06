@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
 import { Screen } from "../../src/shared/components/Screen";
 import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
 import { Field } from "../../src/shared/components/Field";
-import { PrimaryButton } from "../../src/features/hydration/ui/components/PrimaryButton";
-import { ProgressRing } from "../../src/features/hydration/ui/components/ProgressRing";
+import { Button } from "../../src/shared/components/Button";
+import { ProgressRing } from "../../src/shared/components/ProgressRing";
 import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
@@ -72,6 +72,14 @@ export default function HomeScreen() {
     void requestPermission();
   }, [permission, requestPermission]);
 
+  useEffect(() => {
+    if (Platform.OS === 'ios' && plan.targetMl > 0) {
+      AccessibilityInfo.announceForAccessibility(
+        `Progress: ${Math.round(progressPct * 100)} percent. ${plan.consumedMl} out of ${plan.targetMl} ml consumed.`
+      );
+    }
+  }, [progressPct, plan.consumedMl, plan.targetMl]);
+
   const handleLog = async (amountMl: number) => {
     if (amountMl <= 0 || !Number.isFinite(amountMl)) return;
     
@@ -136,7 +144,7 @@ export default function HomeScreen() {
             <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>
               Reminders will not fire until notifications are enabled.
             </Text>
-            <PrimaryButton
+            <Button
               label={permission.canAskAgain ? "Allow notifications" : "Open settings"}
               variant="secondary"
               onPress={permission.canAskAgain ? requestPermission : openSettings}
@@ -145,19 +153,29 @@ export default function HomeScreen() {
         ) : null}
 
         {/* Hero Section */}
-        <View style={styles.heroSection}>
+        <View 
+          style={styles.heroSection}
+          accessibilityLiveRegion="polite"
+          accessibilityRole="text"
+          accessibilityLabel={`Progress: ${Math.round(progressPct * 100)} percent. ${plan.consumedMl} out of ${plan.targetMl} ml consumed.`}
+        >
           <ProgressRing progress={progressPct} size={240} strokeWidth={20}>
-            <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.displayLarge }]}>
+            <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.displayLarge }]} importantForAccessibility="no">
               {Math.round(progressPct * 100)}%
             </Text>
-            <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, marginTop: 4 }]}>
+            <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, marginTop: 4 }]} importantForAccessibility="no">
               {plan.consumedMl.toLocaleString()} / {plan.targetMl.toLocaleString()} ml
             </Text>
           </ProgressRing>
           
           <View style={styles.mainCtaContainer}>
-            <PrimaryButton label={`I drank ${plan.mlPerReminder} ml`} onPress={handleQuickAdd} />
-            <Pressable onPress={() => setShowAddAmount(!showAddAmount)} style={styles.customAddButton}>
+            <Button label={`I drank ${plan.mlPerReminder} ml`} onPress={handleQuickAdd} />
+            <Pressable 
+              onPress={() => setShowAddAmount(!showAddAmount)} 
+              style={styles.customAddButton}
+              accessibilityRole="button"
+              accessibilityLabel={showAddAmount ? "Cancel custom amount" : "Add a custom amount"}
+            >
               <Text style={[{ color: theme.colors.accent, ...theme.typography.bodySmall, fontWeight: "600" }]}>
                 {showAddAmount ? "Cancel custom amount" : "+ Add a custom amount"}
               </Text>
@@ -175,7 +193,7 @@ export default function HomeScreen() {
                 keyboardType="number-pad"
                 placeholder="e.g. 150"
               />
-              <PrimaryButton label="Log" onPress={handleCustomAdd} />
+              <Button label="Log" onPress={handleCustomAdd} />
             </View>
           </AnimatedCard>
         ) : null}
@@ -192,6 +210,8 @@ export default function HomeScreen() {
                 <Pressable
                   key={`preset-${amount}`}
                   onPress={() => handlePresetLog(amount)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Log ${amount} milliliters`}
                   style={[
                     styles.presetButton,
                     {
