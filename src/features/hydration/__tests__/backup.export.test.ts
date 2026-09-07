@@ -62,11 +62,12 @@ const SEED_STATE = {
     escalationEnabled: true,
     soundEnabled: true,
     appearanceMode: "dark" as const,
-    gentleGoalEnabled: false,
+    displayUnit: "ml" as const,
+    gentleGoalEnabled: true,
     gentleGoalThreshold: 60,
   },
   progress: { date: "2026-09-06", consumedMl: 1500 },
-  quickLog: { presets: [100, 200, 250, 500], lastUsedMl: 200 },
+  quickLog: { presets: [{id: '1', name: '1', icon: '1', amountMl: 100}, {id: '2', name: '2', icon: '1', amountMl: 200}, {id: '3', name: '3', icon: '1', amountMl: 250}, {id: '4', name: '4', icon: '1', amountMl: 500}], lastUsedMl: 200, lastLogAt: null },
   history: {
     "2026-09-05": {
       date: "2026-09-05",

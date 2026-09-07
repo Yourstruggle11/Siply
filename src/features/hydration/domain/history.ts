@@ -5,7 +5,7 @@ import {
   QUICK_LOG_MAX_PRESETS,
   QUICK_LOG_MIN_PRESETS,
 } from "../../../core/constants";
-import { HydrationDaySummary, HydrationHistory, LogEntry } from "./types";
+import { HydrationDaySummary, HydrationHistory, LogEntry, DrinkPreset } from "./types";
 
 const ensureLogHours = (input?: number[]) => {
   const base = Array.isArray(input) ? input.slice(0, 24) : [];
@@ -391,4 +391,57 @@ export const computeBestHoursByVolume = (history: HydrationHistory, now: Date, d
     .map((item) => item.hour);
 
   return ranked;
+};
+
+// ---------------------------------------------------------------------------
+// 7.3 — computeSmartPresets
+// Reorders presets based on recent consumption history for the current time of day.
+// ---------------------------------------------------------------------------
+export const computeSmartPresets = (
+  history: HydrationHistory,
+  now: Date,
+  presets: DrinkPreset[],
+  days = 7
+): DrinkPreset[] => {
+  const currentHour = now.getHours();
+  const keys = buildDateKeys(now, days);
+  
+  const matches = new Map<number, number>();
+  let totalMatches = 0;
+  
+  for (const key of keys) {
+    const entry = history[key];
+    if (!entry || !entry.entries) continue;
+    
+    for (const e of entry.entries) {
+      const eHour = new Date(e.timestamp).getHours();
+      // Check if within window (± 2 hours)
+      let diff = Math.abs(eHour - currentHour);
+      if (diff > 12) diff = 24 - diff;
+      
+      if (diff <= 2) {
+        const amt = e.amountMl;
+        matches.set(amt, (matches.get(amt) ?? 0) + 1);
+        totalMatches += 1;
+      }
+    }
+  }
+  
+  // If insufficient data for this time window, keep original order
+  if (totalMatches < 3) {
+    return presets;
+  }
+  
+  return [...presets].sort((a, b) => {
+    const amtA = typeof a === "number" ? a : a.amountMl;
+    const amtB = typeof b === "number" ? b : b.amountMl;
+    const countA = matches.get(amtA) ?? 0;
+    const countB = matches.get(amtB) ?? 0;
+    
+    if (countA !== countB) {
+      return countB - countA; // descending
+    }
+    // Fallback to original order
+    return presets.indexOf(a) - presets.indexOf(b);
+  });
 };

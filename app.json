@@ -105,7 +105,29 @@
           }
         }
       ],
-      "expo-background-task"
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "SiplyWidget",
+              "label": "Siply Circular Widget",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "description": "Siply Circular Hydration Widget",
+              "updatePeriodMillis": 86400000
+            },
+            {
+              "name": "SiplyLinearWidget",
+              "label": "Siply Linear Widget",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "description": "Siply Linear Hydration Widget",
+              "updatePeriodMillis": 86400000
+            }
+          ]
+        }
+      ]
     ],
     "extra": {
       "router": {},

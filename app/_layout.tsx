@@ -1,7 +1,7 @@
 import "react-native-gesture-handler";
 import React, { useEffect, useMemo, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { ActivityIndicator, StyleSheet, View, useColorScheme } from "react-native";
+import { ActivityIndicator, StyleSheet, View, useColorScheme, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
@@ -16,13 +16,17 @@ import {
   configureNotificationActions,
   rescheduleNotifications,
   parseSiplyNotificationId,
+  snoozeNotification,
 } from "../src/features/hydration/notifications/notifier";
 import { registerBackgroundFetchAsync } from "../src/features/hydration/notifications/backgroundTask";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
-import { NOTIFICATION_ACTION_LOG } from "../src/core/constants";
+import {
+  NOTIFICATION_ACTION_LOG,
+  NOTIFICATION_ACTION_SNOOZE,
+  NOTIFICATION_ACTION_SKIP,
+} from "../src/core/constants";
 import { darkColors, lightColors } from "../src/shared/theme/tokens";
 import { useTheme } from "../src/shared/theme/ThemeProvider";
-
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const HANDLED_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -178,10 +182,40 @@ const RootLayoutNav = () => {
 
   const processNotificationResponse = React.useCallback(
     (response: Notifications.NotificationResponse) => {
-      if (response.actionIdentifier !== NOTIFICATION_ACTION_LOG) {
+      const action = response.actionIdentifier;
+      const notificationId = response.notification.request.identifier;
+
+      if (action === NOTIFICATION_ACTION_SKIP) {
+        if (notificationId) {
+          if (!handledNotificationActions.has(notificationId)) {
+            markNotificationHandled(notificationId);
+          }
+          void Notifications.dismissNotificationAsync(notificationId);
+        }
         return;
       }
-      const notificationId = response.notification.request.identifier;
+
+      if (action === NOTIFICATION_ACTION_SNOOZE) {
+        if (notificationId) {
+          if (handledNotificationActions.has(notificationId)) {
+            void Notifications.dismissNotificationAsync(notificationId);
+            return;
+          }
+          markNotificationHandled(notificationId);
+          void Notifications.dismissNotificationAsync(notificationId);
+        }
+        const meta = parseSiplyNotificationId(notificationId);
+        const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
+        if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
+          void snoozeNotification(amount, settings);
+        }
+        return;
+      }
+
+      if (action !== NOTIFICATION_ACTION_LOG) {
+        return;
+      }
+      
       if (notificationId) {
         if (handledNotificationActions.has(notificationId)) {
           void Notifications.dismissNotificationAsync(notificationId);
@@ -196,7 +230,7 @@ const RootLayoutNav = () => {
         void addConsumed(amount);
       }
     },
-    [addConsumed]
+    [addConsumed, settings]
   );
 
   const lastResponse = Notifications.useLastNotificationResponse();

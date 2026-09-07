@@ -25,6 +25,8 @@ import {
 } from "../src/features/hydration/notifications/diagnostics";
 import { exportBackup } from "../src/features/hydration/backup/export";
 import { importBackup } from "../src/features/hydration/backup/import";
+import { STORAGE_KEYS } from "../src/core/storage/keys";
+import { getJson } from "../src/core/storage/storage";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -39,6 +41,7 @@ export default function SettingsScreen() {
   // Backup loading states
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
+  const [showBackupReminder, setShowBackupReminder] = useState(false);
 
   const { permission, requestPermission, openSettings } = useNotificationPermission();
   const [diagnostics, setDiagnostics] = useState<NotificationDiagnosticsState | null>(null);
@@ -55,6 +58,7 @@ export default function SettingsScreen() {
     setBackupExporting(true);
     try {
       await exportBackup();
+      setShowBackupReminder(false);
     } finally {
       setBackupExporting(false);
     }
@@ -170,6 +174,25 @@ export default function SettingsScreen() {
     if (ENABLE_DIAGNOSTICS) {
       void refreshDiagnostics();
     }
+    const checkBackupStatus = async () => {
+      try {
+        const lastExportStr = await getJson<string>(STORAGE_KEYS.lastExportAt);
+        const firstLaunchStr = await getJson<string>(STORAGE_KEYS.firstLaunchAt);
+        
+        const lastExport = lastExportStr ? new Date(lastExportStr) : null;
+        const firstLaunch = firstLaunchStr ? new Date(firstLaunchStr) : new Date();
+        
+        const comparisonDate = lastExport || firstLaunch;
+        const daysSince = (Date.now() - comparisonDate.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (daysSince > 30) {
+          setShowBackupReminder(true);
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+    void checkBackupStatus();
   }, []);
 
   return (
@@ -219,6 +242,28 @@ export default function SettingsScreen() {
 
         <AnimatedCard style={styles.section} delay={180}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Reminders</Text>
+          <View style={{ gap: 8, marginBottom: 8 }}>
+            <Text style={[{ color: theme.colors.textPrimary, fontSize: 15, fontWeight: "500" }]}>Tone</Text>
+            <View style={styles.optionRow}>
+              {(["encouraging", "minimal", "playful"] as const).map((tone) => (
+                <Pressable
+                  key={`tone-${tone}`}
+                  onPress={() => updateSettings({ tone })}
+                  style={[
+                    styles.optionButton,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: settings.tone === tone ? theme.colors.accent : theme.colors.surface,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.optionText, { color: settings.tone === tone ? theme.colors.surface : theme.colors.textPrimary }]}>
+                    {tone}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           <ToggleRow
             label="Nudges"
             helper="Extra reminders after 5 and 10 minutes."
@@ -249,6 +294,16 @@ export default function SettingsScreen() {
 
         <AnimatedCard style={styles.section} delay={220}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Data backup</Text>
+          {showBackupReminder ? (
+            <View style={{ backgroundColor: theme.colors.accentSoft, padding: 12, borderRadius: 8, marginBottom: 8 }}>
+              <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600", marginBottom: 4 }]}>
+                Time for a backup?
+              </Text>
+              <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
+                It's been over 30 days since your last backup (or since you started using Siply). We recommend exporting your data regularly.
+              </Text>
+            </View>
+          ) : null}
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             Export your settings and history to a .siply.json file, or restore from a previous backup.
           </Text>

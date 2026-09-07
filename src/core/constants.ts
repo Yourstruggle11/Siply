@@ -11,6 +11,8 @@ export const NUDGE_MINUTES = [5, 10] as const;
 export const REMINDER_TARGET_ML = 200;
 export const NOTIFICATION_CATEGORY_ID = "siply-reminder";
 export const NOTIFICATION_ACTION_LOG = "LOG_DRINK";
+export const NOTIFICATION_ACTION_SNOOZE = "SNOOZE_30";
+export const NOTIFICATION_ACTION_SKIP = "SKIP_DRINK";
 export const DEFAULT_GENTLE_GOAL_THRESHOLD = 60;
 export const DEFAULT_QUICK_LOG_PRESETS: DrinkPreset[] = [
   { id: "preset-water-250", name: "Glass of Water", icon: "cup-water", amountMl: 250 },
@@ -36,4 +38,5 @@ export const DEFAULT_SETTINGS: HydrationSettings = {
   displayUnit: "ml",
   gentleGoalEnabled: false,
   gentleGoalThreshold: DEFAULT_GENTLE_GOAL_THRESHOLD,
+  tone: "encouraging",
 };

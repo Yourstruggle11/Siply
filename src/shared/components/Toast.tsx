@@ -37,7 +37,7 @@ export const Toast = ({ message, actionLabel, onAction, visible, onHide, duratio
     }
   }, [visible, animatedValue, durationMs, onHide]);
 
-  if (!visible && animatedValue.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) === 0) {
+  if (!visible && (animatedValue as any)._value === 0) {
     return null; // completely hidden
   }
 

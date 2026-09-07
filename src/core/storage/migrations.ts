@@ -43,6 +43,9 @@ const toAppearanceMode = (value: unknown, fallback: "light" | "dark" | "system")
 const toDisplayUnit = (value: unknown, fallback: "ml" | "fl oz" | "cups"): "ml" | "fl oz" | "cups" =>
   value === "ml" || value === "fl oz" || value === "cups" ? value : fallback;
 
+const toReminderTone = (value: unknown, fallback: "encouraging" | "minimal" | "playful"): "encouraging" | "minimal" | "playful" =>
+  value === "encouraging" || value === "minimal" || value === "playful" ? value : fallback;
+
 export const normalizeSettings = (input: Partial<HydrationSettings> | null): HydrationSettings => {
   const base = input ?? {};
   return {
@@ -56,6 +59,7 @@ export const normalizeSettings = (input: Partial<HydrationSettings> | null): Hyd
     displayUnit: toDisplayUnit(base.displayUnit, DEFAULT_SETTINGS.displayUnit),
     gentleGoalEnabled: toBoolean(base.gentleGoalEnabled, DEFAULT_SETTINGS.gentleGoalEnabled),
     gentleGoalThreshold: toNumber(base.gentleGoalThreshold, DEFAULT_GENTLE_GOAL_THRESHOLD),
+    tone: toReminderTone(base.tone, DEFAULT_SETTINGS.tone!),
   };
 };
 
@@ -137,6 +141,12 @@ export const hydrateStorage = async (): Promise<HydrationStorageSnapshot> => {
       setJson(STORAGE_KEYS.quickLog, quickLog),
       setJson(STORAGE_KEYS.history, history),
     ]);
+  }
+
+  let firstLaunchAt = await getJson<string>(STORAGE_KEYS.firstLaunchAt);
+  if (!firstLaunchAt) {
+    firstLaunchAt = new Date().toISOString();
+    await setJson(STORAGE_KEYS.firstLaunchAt, firstLaunchAt);
   }
 
   return { settings, progress, onboarding, quickLog, history };

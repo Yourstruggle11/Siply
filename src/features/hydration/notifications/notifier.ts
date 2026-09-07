@@ -4,12 +4,15 @@ import {
   APP_NAME,
   MAX_NOTIFICATIONS_PER_DAY,
   NOTIFICATION_ACTION_LOG,
+  NOTIFICATION_ACTION_SNOOZE,
+  NOTIFICATION_ACTION_SKIP,
   NOTIFICATION_CATEGORY_ID,
   NUDGE_MINUTES,
 } from "../../../core/constants";
 import { addMinutes } from "../../../core/time";
 import { computeReminderSchedule } from "../domain/schedule";
-import { HydrationSettings } from "../domain/types";
+import { computeSipsPerReminder } from "../domain/calculations";
+import { HydrationSettings, ReminderTone } from "../domain/types";
 import { recordScheduleDiagnostics, recordTestDiagnostics } from "./diagnostics";
 
 const ANDROID_CHANNEL_SOUND = "siply-reminders-sound";
@@ -19,7 +22,7 @@ const NOTIFICATION_SOUND =
   Platform.OS === "android" ? "siply_reminder" : "siply_reminder.wav";
 const NOTIFICATION_ID_PREFIX = "siply";
 
-type SiplyNotificationKind = "reminder" | "nudge" | "test";
+type SiplyNotificationKind = "reminder" | "nudge" | "test" | "snooze" | "summary";
 
 const getContentSound = (soundEnabled: boolean) => {
   if (!soundEnabled) {
@@ -35,9 +38,23 @@ const getContentSound = (soundEnabled: boolean) => {
   return undefined;
 };
 
-const formatReminderBody = (ml: number, sips: number) => `Drink ~${ml} ml (${sips} sips)`;
-const formatNudgeBody = (ml: number, sips: number) => `Reminder: ~${ml} ml (${sips} sips)`;
-const formatFinalNudgeBody = (ml: number) => `Still time for ~${ml} ml`;
+const formatReminderBody = (ml: number, sips: number, tone: ReminderTone = "encouraging") => {
+  if (tone === "minimal") return `${ml} ml (${sips} sips)`;
+  if (tone === "playful") return `Time for a ${ml}ml splash! 💦 (${sips} sips)`;
+  return `Drink ~${ml} ml (${sips} sips)`;
+};
+
+const formatNudgeBody = (ml: number, sips: number, tone: ReminderTone = "encouraging") => {
+  if (tone === "minimal") return `Reminder: ${ml} ml (${sips} sips)`;
+  if (tone === "playful") return `Don't forget your ${ml}ml splash! 🌊 (${sips} sips)`;
+  return `Reminder: ~${ml} ml (${sips} sips)`;
+};
+
+const formatFinalNudgeBody = (ml: number, tone: ReminderTone = "encouraging") => {
+  if (tone === "minimal") return `Final reminder: ${ml} ml`;
+  if (tone === "playful") return `Last call for your ${ml}ml splash! 🧊`;
+  return `Still time for ~${ml} ml`;
+};
 
 const getChannelId = (soundEnabled: boolean) =>
   soundEnabled ? ANDROID_CHANNEL_SOUND : ANDROID_CHANNEL_SILENT;
@@ -84,7 +101,7 @@ export const parseSiplyNotificationId = (identifier?: string) => {
     return null;
   }
   const kind = parts[1] as SiplyNotificationKind;
-  if (kind !== "reminder" && kind !== "nudge" && kind !== "test") {
+  if (kind !== "reminder" && kind !== "nudge" && kind !== "test" && kind !== "snooze" && kind !== "summary") {
     return null;
   }
   const mlRaw = parts.length >= 4 ? Number.parseInt(parts[3], 10) : NaN;
@@ -156,6 +173,20 @@ export const configureNotificationActions = async () => {
       buttonTitle: "I drank",
       options: {
         opensAppToForeground: true,
+      },
+    },
+    {
+      identifier: NOTIFICATION_ACTION_SNOOZE,
+      buttonTitle: "Snooze 30 min",
+      options: {
+        opensAppToForeground: false,
+      },
+    },
+    {
+      identifier: NOTIFICATION_ACTION_SKIP,
+      buttonTitle: "Skip",
+      options: {
+        opensAppToForeground: false,
       },
     },
   ]);
@@ -274,7 +305,7 @@ export const scheduleNotifications = async (
       continue;
     }
     const content = buildContent(
-      formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder),
+      formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder, settings.tone),
       settings.soundEnabled
     );
     requests.push(
@@ -297,8 +328,8 @@ export const scheduleNotifications = async (
             identifier: buildNotificationId("nudge", nudgeTime, slot.mlPerReminder, offset),
             content: buildContent(
               offset === NUDGE_MINUTES[0]
-                ? formatNudgeBody(slot.mlPerReminder, slot.sipsPerReminder)
-                : formatFinalNudgeBody(slot.mlPerReminder),
+                ? formatNudgeBody(slot.mlPerReminder, slot.sipsPerReminder, settings.tone)
+                : formatFinalNudgeBody(slot.mlPerReminder, settings.tone),
               settings.soundEnabled
             ),
             trigger: buildTrigger(nudgeTime, channelId),
@@ -306,6 +337,34 @@ export const scheduleNotifications = async (
         );
         requested += 1;
       }
+    }
+  }
+
+  // Schedule daily summary at windowEnd
+  if (settings.windowEnd) {
+    const [endH, endM] = settings.windowEnd.split(":").map(Number);
+    const summaryTime = new Date(now);
+    summaryTime.setHours(endH, endM, 0, 0);
+    
+    // Only schedule if the window end is still coming up today (within our 24h horizon)
+    if (summaryTime > now && summaryTime <= horizonEnd) {
+      const targetMl = settings.targetLiters * 1000;
+      const pct = targetMl > 0 ? Math.round((consumedMl / targetMl) * 100) : 0;
+      const message = pct >= 100 ? "Great job!" : "Keep it up tomorrow!";
+      
+      const summaryContent = buildContent(
+        `You drank ${consumedMl} ml today (${pct}% of your goal). ${message}`,
+        settings.soundEnabled
+      );
+      
+      requests.push(
+        Notifications.scheduleNotificationAsync({
+          identifier: buildNotificationId("summary", summaryTime),
+          content: summaryContent,
+          trigger: buildTrigger(summaryTime, channelId),
+        })
+      );
+      requested += 1;
     }
   }
 
@@ -441,4 +500,36 @@ export const sendTestNotification = async () => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+};
+
+export const snoozeNotification = async (mlPerReminder: number, settings: HydrationSettings) => {
+  if (Platform.OS === "android") {
+    try {
+      await ensureNotificationChannels();
+    } catch {}
+  }
+  
+  if (Platform.OS === "ios") {
+    try {
+      const pending = await Notifications.getAllScheduledNotificationsAsync();
+      if (pending.length >= 64) {
+        console.warn(`Siply: OS notification cap warning. Cannot snooze.`);
+        return;
+      }
+    } catch {}
+  }
+  
+  const now = new Date();
+  const snoozeTime = addMinutes(now, 30);
+  const channelId = getChannelId(settings.soundEnabled);
+  const content = buildContent(
+    formatReminderBody(mlPerReminder, computeSipsPerReminder(mlPerReminder, settings.sipMl), settings.tone),
+    settings.soundEnabled
+  );
+  
+  await Notifications.scheduleNotificationAsync({
+    identifier: buildNotificationId("snooze", snoozeTime, mlPerReminder),
+    content,
+    trigger: buildTrigger(snoozeTime, channelId),
+  });
 };

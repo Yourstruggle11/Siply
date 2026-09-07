@@ -22,8 +22,6 @@ export const ShareCard = ({ progress, consumedMl, targetMl, currentStreak }: Sha
           size={140}
           strokeWidth={12}
           progress={progress}
-          trackColor={theme.colors.border}
-          fillColor={theme.colors.accent}
         />
         <View style={styles.ringText}>
           <Text style={[styles.percent, { color: theme.colors.textPrimary }]}>{percent}%</Text>

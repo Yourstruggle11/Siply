@@ -14,6 +14,9 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
 import type { LogEntry } from "../../src/features/hydration/domain/types";
+import { CelebrationOverlay } from "../../src/shared/components/CelebrationOverlay";
+import { computeStreakStats, computeSmartPresets } from "../../src/features/hydration/domain/history";
+import { litersToMl } from "../../src/features/hydration/domain/calculations";
 
 // ---------------------------------------------------------------------------
 // Timeline entry shape used for rendering.
@@ -39,6 +42,12 @@ export default function HomeScreen() {
   const plan = useHydrationPlan();
   const [showAddAmount, setShowAddAmount] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
+  const [milestoneStreak, setMilestoneStreak] = useState<number | null>(null);
+
+  const smartPresets = useMemo(() => {
+    // Only recompute periodically or on log, but using new Date() every render is okay for this lightweight function
+    return computeSmartPresets(history, new Date(), quickLog.presets, 7);
+  }, [history, quickLog.presets]);
 
   // §6.4 — Timeline entries derived directly from store.
   // history[today].entries is the source of truth for days within the
@@ -111,7 +120,22 @@ export default function HomeScreen() {
 
     const newTotal = globalProgress.consumedMl + amountMl;
     if (!wasMet && newTotal >= plan.targetMl) {
-      void triggerSuccessHaptic();
+      const currentHistory = useHydrationStore.getState().history;
+      const goalMl = litersToMl(settings.targetLiters);
+      const goodThresholdMl = Math.round((goalMl * settings.gentleGoalThreshold) / 100);
+      const stats = computeStreakStats(
+        currentHistory,
+        new Date(),
+        goalMl,
+        goodThresholdMl,
+        settings.gentleGoalEnabled
+      );
+
+      if (stats.currentStreak === 7 || stats.currentStreak === 30 || stats.currentStreak === 100) {
+        setMilestoneStreak(stats.currentStreak);
+      } else {
+        void triggerSuccessHaptic();
+      }
     } else {
       void triggerLightHaptic();
     }
@@ -219,7 +243,7 @@ export default function HomeScreen() {
             Quick log
           </Text>
           <View style={styles.quickLogRow}>
-            {quickLog.presets.map((preset, index) => {
+            {smartPresets.map((preset, index) => {
               const amount = typeof preset === "number" ? preset : preset.amountMl;
               const id = typeof preset === "object" && preset.id ? preset.id : `preset-${index}-${amount}`;
               const isActive = quickLog.lastUsedMl === amount;
@@ -327,6 +351,12 @@ export default function HomeScreen() {
           )}
         </View>
       </View>
+      {milestoneStreak !== null && (
+        <CelebrationOverlay
+          streak={milestoneStreak}
+          onComplete={() => setMilestoneStreak(null)}
+        />
+      )}
     </Screen>
   );
 }

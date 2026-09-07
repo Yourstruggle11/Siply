@@ -1,14 +1,19 @@
+export type AppearanceMode = "light" | "dark" | "system";
+export type DisplayUnit = "ml" | "fl oz" | "cups";
+export type ReminderTone = "encouraging" | "minimal" | "playful";
+
 export type HydrationSettings = {
   targetLiters: number;
-  windowStart: string;
+  windowStart: string; // HH:mm
   windowEnd: string;
   sipMl: number;
   escalationEnabled: boolean;
   soundEnabled: boolean;
-  appearanceMode: "light" | "dark" | "system";
-  displayUnit: "ml" | "fl oz" | "cups";
+  appearanceMode: AppearanceMode;
+  displayUnit: DisplayUnit;
   gentleGoalEnabled: boolean;
   gentleGoalThreshold: number;
+  tone?: ReminderTone;
 };
 
 export type HydrationProgress = {
@@ -72,4 +77,5 @@ export type HydrationPlan = {
   nextReminderAt: Date | null;
   targetMet: boolean;
   remainingMl: number;
+  consumedMl: number;
 };

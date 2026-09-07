@@ -4,7 +4,9 @@ import {
   normalizeHistory,
   undoHistoryForLog,
   updateHistoryForLog,
+  computeStreakStats,
 } from "../domain/history";
+import { addDays, getDateKey } from "../../../core/time";
 import type { HydrationHistory, LogEntry } from "../domain/types";
 
 // ---------------------------------------------------------------------------
@@ -305,5 +307,45 @@ describe("normalizeHistory", () => {
     const copy = JSON.parse(JSON.stringify(input));
     normalizeHistory(input);
     expect(input).toEqual(copy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeStreakStats
+// ---------------------------------------------------------------------------
+
+describe("computeStreakStats", () => {
+  it("calculates current streak correctly including today", () => {
+    const history: HydrationHistory = {
+      [getDateKey(addDays(fixedNow, 0))]: { date: getDateKey(addDays(fixedNow, 0)), totalMl: 3000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -1))]: { date: getDateKey(addDays(fixedNow, -1)), totalMl: 3500, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -2))]: { date: getDateKey(addDays(fixedNow, -2)), totalMl: 4000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -3))]: { date: getDateKey(addDays(fixedNow, -3)), totalMl: 1000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+    };
+
+    const stats = computeStreakStats(history, fixedNow, 3000, 1800, false);
+    expect(stats.currentStreak).toBe(3);
+  });
+  
+  it("breaks streak if yesterday was missed but today is met", () => {
+    const history: HydrationHistory = {
+      [getDateKey(addDays(fixedNow, 0))]: { date: getDateKey(addDays(fixedNow, 0)), totalMl: 3000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -1))]: { date: getDateKey(addDays(fixedNow, -1)), totalMl: 1000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -2))]: { date: getDateKey(addDays(fixedNow, -2)), totalMl: 4000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+    };
+
+    const stats = computeStreakStats(history, fixedNow, 3000, 1800, false);
+    expect(stats.currentStreak).toBe(1);
+  });
+
+  it("calculates best streak", () => {
+    const history: HydrationHistory = {
+      [getDateKey(addDays(fixedNow, -5))]: { date: getDateKey(addDays(fixedNow, -5)), totalMl: 3000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -6))]: { date: getDateKey(addDays(fixedNow, -6)), totalMl: 3500, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+      [getDateKey(addDays(fixedNow, -7))]: { date: getDateKey(addDays(fixedNow, -7)), totalMl: 4000, goalMl: 3000, goodThresholdMl: 1800, logHours: [] },
+    };
+    const stats = computeStreakStats(history, fixedNow, 3000, 1800, false);
+    expect(stats.bestStreak).toBe(3);
+    expect(stats.currentStreak).toBe(0);
   });
 });

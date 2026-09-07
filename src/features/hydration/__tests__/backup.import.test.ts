@@ -69,7 +69,8 @@ const VALID_BACKUP_JSON = JSON.stringify({
     sipMl: 20,
     escalationEnabled: false,
     soundEnabled: false,
-    appearanceMode: "light",
+    appearanceMode: "dark",
+    displayUnit: "ml",
     gentleGoalEnabled: true,
     gentleGoalThreshold: 70,
   },
@@ -90,11 +91,12 @@ const INITIAL_STATE = {
     escalationEnabled: true,
     soundEnabled: true,
     appearanceMode: "dark" as const,
+    displayUnit: "ml" as const,
     gentleGoalEnabled: false,
     gentleGoalThreshold: 60,
   },
   progress: { date: TODAY, consumedMl: 1000 },
-  quickLog: { presets: [100, 200, 250, 500], lastUsedMl: 200 },
+  quickLog: { presets: [{id: '1', name: '1', icon: '1', amountMl: 100}, {id: '2', name: '2', icon: '1', amountMl: 200}, {id: '3', name: '3', icon: '1', amountMl: 250}, {id: '4', name: '4', icon: '1', amountMl: 500}], lastUsedMl: 200, lastLogAt: null },
   history: {
     "2026-09-05": makeDay("2026-09-05", 1000), // existing — backup has higher totalMl
     "2026-09-03": makeDay("2026-09-03", 2000), // current-only — must be preserved

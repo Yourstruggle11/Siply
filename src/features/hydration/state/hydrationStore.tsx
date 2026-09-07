@@ -33,6 +33,15 @@ import {
   undoHistoryForLog,
   normalizeHistory,
 } from "../domain/history";
+import { Platform } from "react-native";
+
+let updateAndroidWidget: () => void = () => {};
+if (Platform.OS === "android") {
+  try {
+    const { updateAndroidWidget: updater } = require("../widgets/AndroidWidgetTaskHandler");
+    updateAndroidWidget = updater;
+  } catch (e) {}
+}
 
 export type HydrationState = {
   settings: HydrationSettings;
@@ -109,6 +118,7 @@ export const useHydrationStore = create<HydrationStore>()(
         set((state) => ({
           settings: { ...state.settings, ...patch },
         }));
+        updateAndroidWidget();
       },
 
       // §9 — addConsumed: consumedMl sourced from history.totalMl for consistency
@@ -150,6 +160,7 @@ export const useHydrationStore = create<HydrationStore>()(
           history: trimmedHistory,
           quickLog: quickLogNext,
         });
+        updateAndroidWidget();
       },
 
       // §4.2.1 — undoLastLog: no parameters; reads last entry from store
@@ -172,6 +183,7 @@ export const useHydrationStore = create<HydrationStore>()(
           progress: nextProgress,
           history: nextHistory,
         });
+        updateAndroidWidget();
       },
 
       resetToday: async () => {
@@ -188,6 +200,7 @@ export const useHydrationStore = create<HydrationStore>()(
           progress: nextProgress,
           history: nextHistory,
         });
+        updateAndroidWidget();
       },
 
       completeOnboarding: async () => {
@@ -202,6 +215,7 @@ export const useHydrationStore = create<HydrationStore>()(
         }
         const nextProgress: HydrationProgress = { date: todayKey, consumedMl: 0 };
         set({ progress: nextProgress });
+        updateAndroidWidget();
         return true;
       },
 

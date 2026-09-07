@@ -4,6 +4,8 @@ import * as Sharing from "expo-sharing";
 import Constants from "expo-constants";
 import { useHydrationStore } from "../state/hydrationStore";
 import { SCHEMA_VERSION } from "../../../core/constants";
+import { STORAGE_KEYS } from "../../../core/storage/keys";
+import { setJson } from "../../../core/storage/storage";
 import type { SiplyBackup } from "./types";
 
 /**
@@ -57,6 +59,9 @@ export async function exportBackup(): Promise<void> {
       dialogTitle: "Save Siply backup",
       UTI: "public.json",
     });
+    
+    // Once successfully shared, update the lastExportAt timestamp
+    await setJson(STORAGE_KEYS.lastExportAt, today.toISOString());
   } catch {
     // User dismissed share sheet or it failed — not an error worth surfacing.
   }

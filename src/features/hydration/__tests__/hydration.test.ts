@@ -29,7 +29,7 @@ describe("Zustand Store Actions", () => {
       settings: DEFAULT_SETTINGS,
       progress: { date: getDateKey(new Date()), consumedMl: 0 },
       history: {},
-      quickLog: { presets: [250, 500, 750], lastUsedMl: null },
+      quickLog: { presets: [{ id: '1', name: 'Glass', icon: 'glass', amountMl: 250 }, { id: '2', name: 'Bottle', icon: 'bottle', amountMl: 500 }, { id: '3', name: 'Large', icon: 'large', amountMl: 750 }], lastUsedMl: null, lastLogAt: null },
       onboarding: { completed: false },
     });
   });
