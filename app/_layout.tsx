@@ -1,7 +1,10 @@
 import "react-native-gesture-handler";
 import React, { useEffect, useMemo, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { ActivityIndicator, StyleSheet, View, useColorScheme, Platform } from "react-native";
+import { ActivityIndicator, StyleSheet, View, useColorScheme, Platform, Alert } from "react-native";
+import * as Linking from "expo-linking";
+import * as FileSystem from "expo-file-system/legacy";
+import { processBackupUri } from "../src/features/hydration/backup/import";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
@@ -114,6 +117,51 @@ const RootLayoutNav = () => {
       return;
     }
     await Notifications.requestPermissionsAsync();
+  }, []);
+
+  useEffect(() => {
+    const handleUrl = async (url: string | null) => {
+      if (!url) return;
+      
+      const isSiplyJson = url.endsWith(".siply.json");
+      const isContentOrFile = url.startsWith("file://") || url.startsWith("content://");
+      
+      if (!isSiplyJson && !isContentOrFile) return;
+
+      let safeUri = url;
+      if (url.startsWith("content://")) {
+        try {
+          const tempUri = FileSystem.cacheDirectory + "deep_link_temp.siply.json";
+          await FileSystem.copyAsync({ from: url, to: tempUri });
+          safeUri = tempUri;
+        } catch {
+          return; // Silent fail if we can't even copy it
+        }
+      }
+
+      if (!isSiplyJson) {
+        // Pre-check for generic URIs
+        try {
+          const snippet = await FileSystem.readAsStringAsync(safeUri, { length: 50 });
+          if (!snippet.includes('"siplyBackup"')) {
+            return; // Not a Siply backup, ignore silently
+          }
+        } catch {
+          return; // Could not read, ignore silently
+        }
+      }
+
+      // Delay slightly to ensure UI is ready for the Alert dialog
+      setTimeout(() => {
+        processBackupUri(safeUri).catch(() => {
+          Alert.alert("Import failed", "An unexpected error occurred during import.");
+        });
+      }, 500);
+    };
+
+    Linking.getInitialURL().then(handleUrl);
+    const subscription = Linking.addEventListener("url", (event) => handleUrl(event.url));
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {
