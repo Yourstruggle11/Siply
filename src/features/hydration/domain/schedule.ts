@@ -137,6 +137,29 @@ export const computeReminderSchedule = (
     const futureTimes = plannedTimes.filter((time) => time > now);
     const times = futureTimes.slice(0, remainingCapacity);
 
+    if (isCurrent && times.length === 0 && windowMinutes > 0) {
+      // Smart "Last Call" fallback:
+      // Don't demand the full remaining amount. Cap it at a normal sip size (200ml).
+      const ml = Math.min(REMINDER_TARGET_ML, Math.max(1, remainingMl));
+      
+      // Try to schedule it 5 minutes before the window closes, 
+      // or immediately (now + 1m) if we are already in the last 5 minutes.
+      let lastCallTime = new Date(window.end.getTime() - 5 * 60000);
+      if (lastCallTime <= now) {
+        lastCallTime = addMinutes(now, 1);
+      }
+      
+      if (lastCallTime < window.end) {
+        slots.push({
+          time: lastCallTime,
+          mlPerReminder: ml,
+          sipsPerReminder: computeSipsPerReminder(ml, settings.sipMl),
+          intervalMinutes: 0,
+        });
+      }
+      continue;
+    }
+
     if (!times.length) {
       continue;
     }
