@@ -169,6 +169,7 @@ export function SiplyLinearWidget({
 
   return (
     <FlexWidget
+      clickAction="OPEN_APP"
       style={{
         width: 'match_parent',
         height: 'match_parent',
