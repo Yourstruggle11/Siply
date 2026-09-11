@@ -34,6 +34,8 @@ export const BottomSheet = ({ visible, onDismiss, children }: BottomSheetProps) 
   }, [visible, translateY]);
 
   const panGesture = Gesture.Pan()
+    .activeOffsetY(10)
+    .failOffsetY(-10)
     .onUpdate((event) => {
       // Only allow dragging down
       if (event.translationY > 0) {

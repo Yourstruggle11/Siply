@@ -280,6 +280,8 @@ const RootLayoutNav = () => {
   );
 };
 
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+
 const AppShell = () => {
   const settings = useHydrationStore((s) => s.settings);
   // @ts-ignore
@@ -292,12 +294,14 @@ const AppShell = () => {
   const statusBarStyle = isDark ? "light" : "dark";
   const statusBarBackground = isDark ? darkColors.background : lightColors.background;
   return (
-    <SafeAreaProvider>
-      <ThemeProvider mode={settings.appearanceMode}>
-        <StatusBar style={statusBarStyle} backgroundColor={statusBarBackground} />
-        <RootLayoutNav />
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider mode={settings.appearanceMode}>
+          <StatusBar style={statusBarStyle} backgroundColor={statusBarBackground} />
+          <RootLayoutNav />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 };
 

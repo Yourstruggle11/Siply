@@ -1,5 +1,6 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, View } from "react-native";
+import Svg, { Rect, Text as SvgText, Line } from "react-native-svg";
 import { useTheme } from "../theme/ThemeProvider";
 
 type HourlyBarChartProps = {
@@ -9,89 +10,119 @@ type HourlyBarChartProps = {
 
 export const HourlyBarChart = ({ logHours, goalMl }: HourlyBarChartProps) => {
   const theme = useTheme();
-
-  // We want to show the last 24 hours, but typically a day view goes from 0 to 23.
+  const [width, setWidth] = useState(0);
+  const height = 140;
+  const paddingBottom = 24;
+  const chartHeight = height - paddingBottom;
+  
   const hours = Array.from({ length: 24 }, (_, i) => i);
   
-  // Find the maximum value to scale the chart, or use a minimum of 500ml for scaling
-  const maxMl = Math.max(500, ...Object.values(logHours));
+  // Scale heights based on actual volume relative to a reasonable peak.
+  // E.g., if a user drinks 1000ml in an hour, that's a huge peak. We scale against the max hourly volume,
+  // but ensure a minimum scale so tiny sips don't look massive.
+  const maxVolume = Math.max(500, ...Object.values(logHours));
+
+  const barWidth = width > 0 ? (width / 24) * 0.6 : 0;
+  const barSpacing = width > 0 ? (width / 24) * 0.4 : 0;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.chartArea}>
-        {hours.map((hour) => {
-          const ml = logHours[hour] || 0;
-          const heightPct = Math.max(0, Math.min(100, (ml / maxMl) * 100));
+    <View 
+      style={styles.container} 
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      {width > 0 && (
+        <Svg width={width} height={height}>
+          {/* Baseline track for all 24 hours */}
+          {hours.map((hour) => {
+            const x = (barWidth + barSpacing) * hour + (barSpacing / 2);
+            return (
+              <Rect
+                key={`track-${hour}`}
+                x={x}
+                y={0}
+                width={barWidth}
+                height={chartHeight}
+                rx={barWidth / 2}
+                fill={theme.colors.border}
+                opacity={0.3}
+              />
+            );
+          })}
 
-          // Only show labels for some hours (e.g. 0, 6, 12, 18) to avoid crowding
-          const showLabel = hour % 6 === 0;
+          {/* Active fill bars driven by exact volume data */}
+          {hours.map((hour) => {
+            const ml = logHours[hour] || 0;
+            if (ml === 0) return null;
+            
+            const fillHeight = Math.max(barWidth, (ml / maxVolume) * chartHeight);
+            const x = (barWidth + barSpacing) * hour + (barSpacing / 2);
+            const y = chartHeight - fillHeight;
 
-          return (
-            <View key={`hour-${hour}`} style={styles.barContainer}>
-              <View style={styles.barBackground}>
-                <View
-                  style={[
-                    styles.barFill,
-                    {
-                      height: `${heightPct}%`,
-                      backgroundColor: theme.colors.accent,
-                    },
-                  ]}
-                />
-              </View>
-              {showLabel && (
-                <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-                  {hour}h
-                </Text>
-              )}
-            </View>
-          );
-        })}
-      </View>
-      <View style={[styles.axisLine, { backgroundColor: theme.colors.border }]} />
+            return (
+              <Rect
+                key={`fill-${hour}`}
+                x={x}
+                y={y}
+                width={barWidth}
+                height={fillHeight}
+                rx={barWidth / 2}
+                fill={theme.colors.accent}
+              />
+            );
+          })}
+
+          {/* Clean Axis Line */}
+          <Line
+            x1={0}
+            y1={chartHeight}
+            x2={width}
+            y2={chartHeight}
+            stroke={theme.colors.border}
+            strokeWidth={1}
+          />
+
+          {/* 4 Clean Labels (12 AM, 6 AM, 12 PM, 6 PM) */}
+          {[0, 6, 12, 18].map((hour) => {
+            const centerX = (barWidth + barSpacing) * hour + (barWidth / 2) + (barSpacing / 2);
+            let x = centerX;
+            let textAnchor = "middle";
+
+            if (hour === 0) {
+              x = 0;
+              textAnchor = "start";
+            } else if (hour === 18 && width > 0) {
+              // Usually 18 is far enough from right edge, but 23 would need "end"
+              // Keep middle for 18 as it's not the last hour.
+              x = centerX;
+              textAnchor = "middle";
+            }
+
+            const label = hour === 0 ? "12 AM" : hour === 12 ? "12 PM" : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+            return (
+              <SvgText
+                key={`label-${hour}`}
+                x={x}
+                y={height - 4}
+                fill={theme.colors.textSecondary}
+                fontSize={10}
+                fontWeight="500"
+                textAnchor={textAnchor as any}
+              >
+                {label}
+              </SvgText>
+            );
+          })}
+        </Svg>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    height: 120,
+    height: 140,
     marginTop: 16,
     marginBottom: 8,
-  },
-  chartArea: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-  },
-  barContainer: {
-    alignItems: "center",
-    width: "4%",
-    height: "100%",
-  },
-  barBackground: {
-    flex: 1,
-    width: 6,
-    backgroundColor: "transparent",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  barFill: {
     width: "100%",
-    borderRadius: 3,
-  },
-  axisLine: {
-    height: 1,
-    width: "100%",
-    position: "absolute",
-    bottom: 24, // above labels
-  },
-  label: {
-    fontSize: 10,
-    position: "absolute",
-    bottom: 0,
   },
 });

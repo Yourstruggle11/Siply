@@ -328,7 +328,11 @@ export default function YouScreen() {
               >
                 <View style={styles.presetLabelRow}>
                   <MaterialCommunityIcons name={icon as any} size={20} color={theme.colors.textPrimary} style={{ marginRight: 8 }} />
-                  <Text style={[styles.presetLabel, { color: theme.colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.presetLabel, { color: theme.colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+                      {!name || name === `${amount}` ? "Water" : name}
+                    </Text>
+                  </View>
                   <Text style={[{ color: theme.colors.textSecondary, marginLeft: 8, ...theme.typography.caption }]}>
                     {formatLiquid(amount, settings.displayUnit)}
                   </Text>
@@ -540,7 +544,7 @@ const styles = StyleSheet.create({
   presetLabel: {
     fontSize: 16,
     fontWeight: "500",
-    flexShrink: 1,
+    flex: 1,
   },
   presetActions: {
     flexDirection: "row",

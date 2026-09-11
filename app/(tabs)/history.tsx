@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Share, StyleSheet, Text, View, Pressable } from "react-native";
+import { Share, StyleSheet, Text, View, Pressable } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { Screen } from "../../src/shared/components/Screen";
@@ -334,20 +335,25 @@ export default function HistoryScreen() {
                   (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                 );
                 return (
-                  <View style={styles.entryListSection}>
+                  <View style={[styles.entryListSection, { flexShrink: 1 }]}>
                     <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary, marginTop: 20 }]}>
                       Log Entries
                     </Text>
-                    {sorted.map((entry) => (
-                      <View key={entry.id} style={[styles.entryRow, { borderColor: theme.colors.border }]}>
-                        <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
-                          {formatTimeForDisplay(new Date(entry.timestamp))}
-                        </Text>
-                        <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
-                          {formatLiquid(entry.amountMl, settings.displayUnit)}
-                        </Text>
-                      </View>
-                    ))}
+                    <ScrollView 
+                      style={{ maxHeight: 200 }} 
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {sorted.map((entry) => (
+                        <View key={entry.id} style={[styles.entryRow, { borderColor: theme.colors.border }]}>
+                          <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
+                            {formatTimeForDisplay(new Date(entry.timestamp))}
+                          </Text>
+                          <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
+                            {formatLiquid(entry.amountMl, settings.displayUnit)}
+                          </Text>
+                        </View>
+                      ))}
+                    </ScrollView>
                   </View>
                 );
               }
