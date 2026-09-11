@@ -205,7 +205,19 @@ export default function HistoryScreen() {
 
           {/* Smart Insights Banner */}
           {smartInsight && (
-            <AnimatedCard style={[styles.section, { backgroundColor: theme.colors.accent + '15', borderWidth: 1, borderColor: theme.colors.accent + '40' }]} delay={25}>
+            <AnimatedCard 
+              style={[
+                styles.section, 
+                { 
+                  backgroundColor: theme.colors.accent + '15', 
+                  borderWidth: 1, 
+                  borderColor: theme.colors.accent + '40',
+                  elevation: 0,
+                  shadowOpacity: 0,
+                }
+              ]} 
+              delay={25}
+            >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <MaterialCommunityIcons name="lightbulb-on-outline" size={24} color={theme.colors.accent} />
                 <Text style={[{ color: theme.colors.textPrimary, flex: 1, fontSize: 14, fontWeight: '500', lineHeight: 20 }]}>
