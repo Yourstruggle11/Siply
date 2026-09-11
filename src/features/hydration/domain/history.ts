@@ -513,7 +513,7 @@ export const computeSmartInsight = (
     if (thisWeekGoalHits >= 3) {
       return "You're on a roll this week! Keep it up.";
     }
-    return "Drink water consistently to unlock more insights.";
+    return null;
   }
 
   const diffPct = Math.round(((thisWeekVolume - lastWeekVolume) / lastWeekVolume) * 100);

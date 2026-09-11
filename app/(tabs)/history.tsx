@@ -337,6 +337,10 @@ export default function HistoryScreen() {
                 consumedMl={progress.consumedMl}
                 targetMl={goalMl}
                 currentStreak={streaks.currentStreak}
+                bestStreak={streaks.bestStreak}
+                averageIntake={averageIntake}
+                daysTracked={chartData90.filter(v => v > 0).length}
+                insight={smartInsight}
               />
             </View>
           )}
