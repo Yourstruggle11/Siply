@@ -13,6 +13,8 @@ export const NOTIFICATION_CATEGORY_ID = "siply-reminder";
 export const NOTIFICATION_ACTION_LOG = "LOG_DRINK";
 export const NOTIFICATION_ACTION_SNOOZE = "SNOOZE_30";
 export const NOTIFICATION_ACTION_SKIP = "SKIP_DRINK";
+export const NOTIFICATION_CATEGORY_SUMMARY_ID = "siply-summary";
+export const NOTIFICATION_ACTION_VIEW_HISTORY = "siply.action.VIEW_HISTORY";
 export const DEFAULT_GENTLE_GOAL_THRESHOLD = 60;
 export const DEFAULT_QUICK_LOG_PRESETS: DrinkPreset[] = [
   { id: "preset-water-250", name: "Glass of Water", icon: "cup-water", amountMl: 250 },

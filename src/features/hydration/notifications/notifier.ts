@@ -7,6 +7,8 @@ import {
   NOTIFICATION_ACTION_SNOOZE,
   NOTIFICATION_ACTION_SKIP,
   NOTIFICATION_CATEGORY_ID,
+  NOTIFICATION_CATEGORY_SUMMARY_ID,
+  NOTIFICATION_ACTION_VIEW_HISTORY,
   NUDGE_MINUTES,
 } from "../../../core/constants";
 import { addMinutes } from "../../../core/time";
@@ -14,6 +16,12 @@ import { computeReminderSchedule } from "../domain/schedule";
 import { computeSipsPerReminder } from "../domain/calculations";
 import { HydrationSettings, ReminderTone } from "../domain/types";
 import { recordScheduleDiagnostics, recordTestDiagnostics } from "./diagnostics";
+import {
+  ENCOURAGING_MESSAGES,
+  MINIMAL_MESSAGES,
+  PLAYFUL_MESSAGES,
+  getRandomMessage,
+} from "./messages";
 
 const ANDROID_CHANNEL_SOUND = "siply-reminders-sound";
 const ANDROID_CHANNEL_SILENT = "siply-reminders-silent";
@@ -39,21 +47,35 @@ const getContentSound = (soundEnabled: boolean) => {
 };
 
 const formatReminderBody = (ml: number, sips: number, tone: ReminderTone = "encouraging") => {
-  if (tone === "minimal") return `${ml} ml (${sips} sips)`;
-  if (tone === "playful") return `Time for a ${ml}ml splash! 💦 (${sips} sips)`;
-  return `Drink ~${ml} ml (${sips} sips)`;
+  let msg = getRandomMessage(ENCOURAGING_MESSAGES);
+  if (tone === "minimal") msg = getRandomMessage(MINIMAL_MESSAGES);
+  else if (tone === "playful") msg = getRandomMessage(PLAYFUL_MESSAGES);
+  
+  return msg.replace("{ml}", String(ml)).replace("{sips}", String(sips));
 };
 
 const formatNudgeBody = (ml: number, sips: number, tone: ReminderTone = "encouraging") => {
-  if (tone === "minimal") return `Reminder: ${ml} ml (${sips} sips)`;
-  if (tone === "playful") return `Don't forget your ${ml}ml splash! 🌊 (${sips} sips)`;
-  return `Reminder: ~${ml} ml (${sips} sips)`;
+  let msg = getRandomMessage(ENCOURAGING_MESSAGES);
+  if (tone === "minimal") msg = getRandomMessage(MINIMAL_MESSAGES);
+  else if (tone === "playful") msg = getRandomMessage(PLAYFUL_MESSAGES);
+  
+  msg = msg.replace("{ml}", String(ml)).replace("{sips}", String(sips));
+  if (tone !== "minimal") {
+    return `Reminder: ${msg}`;
+  }
+  return msg;
 };
 
 const formatFinalNudgeBody = (ml: number, tone: ReminderTone = "encouraging") => {
-  if (tone === "minimal") return `Final reminder: ${ml} ml`;
-  if (tone === "playful") return `Last call for your ${ml}ml splash! 🧊`;
-  return `Still time for ~${ml} ml`;
+  let msg = getRandomMessage(ENCOURAGING_MESSAGES);
+  if (tone === "minimal") msg = getRandomMessage(MINIMAL_MESSAGES);
+  else if (tone === "playful") msg = getRandomMessage(PLAYFUL_MESSAGES);
+  
+  msg = msg.replace("{ml}", String(ml)).replace("{sips}", "1"); // fallback for {sips} if present
+  if (tone !== "minimal") {
+    return `Final reminder: ${msg}`;
+  }
+  return msg;
 };
 
 const getChannelId = (soundEnabled: boolean) =>
@@ -67,7 +89,7 @@ type NotificationScheduleResult = {
   errors: string[];
 };
 
-const buildContent = (body: string, soundEnabled: boolean) => {
+const buildContent = (body: string, soundEnabled: boolean, categoryId: string = NOTIFICATION_CATEGORY_ID) => {
   const contentSound = getContentSound(soundEnabled);
   return {
     title: APP_NAME,
@@ -77,7 +99,7 @@ const buildContent = (body: string, soundEnabled: boolean) => {
       ? Notifications.AndroidNotificationPriority.HIGH
       : Notifications.AndroidNotificationPriority.DEFAULT,
     vibrate: soundEnabled ? [0, 250, 250, 250] : undefined,
-    categoryIdentifier: NOTIFICATION_CATEGORY_ID,
+    categoryIdentifier: categoryId,
   };
 };
 
@@ -187,6 +209,16 @@ export const configureNotificationActions = async () => {
       buttonTitle: "Skip",
       options: {
         opensAppToForeground: false,
+      },
+    },
+  ]);
+
+  await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORY_SUMMARY_ID, [
+    {
+      identifier: NOTIFICATION_ACTION_VIEW_HISTORY,
+      buttonTitle: "View History",
+      options: {
+        opensAppToForeground: true,
       },
     },
   ]);
@@ -354,7 +386,8 @@ export const scheduleNotifications = async (
       
       const summaryContent = buildContent(
         `You drank ${consumedMl} ml today (${pct}% of your goal). ${message}`,
-        settings.soundEnabled
+        settings.soundEnabled,
+        NOTIFICATION_CATEGORY_SUMMARY_ID
       );
       
       requests.push(
