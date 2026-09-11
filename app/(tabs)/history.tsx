@@ -24,7 +24,11 @@ import {
   computeBestHoursByVolume,
   computeStreakStats,
   getSummaryForDate,
+  computeSmartInsight,
+  getDayContextSummary,
 } from "../../src/features/hydration/domain/history";
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const formatHour = (hour: number) => {
   const safe = hour % 24;
@@ -53,10 +57,13 @@ export default function HistoryScreen() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [chartType, setChartType] = useState<ChartType>("line");
+  const [selectedHour, setSelectedHour] = useState<number | null>(null);
   
   const shareEnabled = Constants.appOwnership !== "expo";
   const shareViewRef = useRef<View>(null);
   const captureRefFn = useRef<null | ((view: any, options?: any) => Promise<string>)>(null);
+
+  const removeLogEntry = useHydrationStore((s) => s.removeLogEntry);
 
   const goalMl = useMemo(() => litersToMl(settings.targetLiters), [settings.targetLiters]);
   const goodThresholdMl = useMemo(
@@ -97,10 +104,19 @@ export default function HistoryScreen() {
     return Math.round((hits / chartData90.length) * 100);
   }, [chartData90, goalMl]);
 
+  const smartInsight = useMemo(() => {
+    return computeSmartInsight(history, new Date(), goalMl);
+  }, [history, goalMl]);
+
   const selectedSummary = useMemo(() => {
     if (!selectedDate) return null;
     return getSummaryForDate(history, selectedDate, goalMl, goodThresholdMl);
   }, [selectedDate, history, goalMl, goodThresholdMl]);
+
+  const contextSummary = useMemo(() => {
+    if (!selectedSummary) return null;
+    return getDayContextSummary(selectedSummary);
+  }, [selectedSummary]);
 
   useEffect(() => {
     if (!shareEnabled) {
@@ -187,6 +203,18 @@ export default function HistoryScreen() {
         <View style={styles.container}>
           <PulsingTitle text="History & Insights" style={styles.title} />
 
+          {/* Smart Insights Banner */}
+          {smartInsight && (
+            <AnimatedCard style={[styles.section, { backgroundColor: theme.colors.accent + '15', borderWidth: 1, borderColor: theme.colors.accent + '40' }]} delay={25}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <MaterialCommunityIcons name="lightbulb-on-outline" size={24} color={theme.colors.accent} />
+                <Text style={[{ color: theme.colors.textPrimary, flex: 1, fontSize: 14, fontWeight: '500', lineHeight: 20 }]}>
+                  {smartInsight}
+                </Text>
+              </View>
+            </AnimatedCard>
+          )}
+
           {/* New 90-Day Trend Chart */}
           <AnimatedCard style={styles.section} delay={50}>
             <View style={styles.chartHeader}>
@@ -228,21 +256,35 @@ export default function HistoryScreen() {
             />
           </AnimatedCard>
 
-          {/* Streaks */}
+          {/* Milestones / Streaks */}
           <AnimatedCard style={styles.section} delay={200}>
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
-              Streaks
+              Milestones
             </Text>
-            <AnimatedStatRow label="Current streak" value={`${streaks.currentStreak} days`} delay={250} />
-            <AnimatedStatRow label="Best streak" value={`${streaks.bestStreak} days`} delay={300} />
-            <AnimatedStatRow label="Goal hits (7d)" value={streaks.last7GoalHits} delay={350} />
-            <AnimatedStatRow label="Goal hits (30d)" value={streaks.last30GoalHits} delay={400} />
-            {settings.gentleGoalEnabled && streaks.currentGoodStreak !== null && (
-              <>
-                <AnimatedStatRow label="Good day streak" value={`${streaks.currentGoodStreak} days`} delay={450} />
-                <AnimatedStatRow label="Best good day streak" value={`${streaks.bestGoodStreak ?? 0} days`} delay={500} />
-              </>
-            )}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
+              <View style={[styles.milestoneBadge, { borderColor: theme.colors.border }]}>
+                <MaterialCommunityIcons name="fire" size={24} color={theme.colors.accent} />
+                <Text style={[styles.milestoneValue, { color: theme.colors.textPrimary }]}>{streaks.currentStreak}</Text>
+                <Text style={[styles.milestoneLabel, { color: theme.colors.textSecondary }]}>Current Streak</Text>
+              </View>
+              <View style={[styles.milestoneBadge, { borderColor: theme.colors.border }]}>
+                <MaterialCommunityIcons name="trophy-outline" size={24} color={theme.colors.accent} />
+                <Text style={[styles.milestoneValue, { color: theme.colors.textPrimary }]}>{streaks.bestStreak}</Text>
+                <Text style={[styles.milestoneLabel, { color: theme.colors.textSecondary }]}>Best Streak</Text>
+              </View>
+              <View style={[styles.milestoneBadge, { borderColor: theme.colors.border }]}>
+                <MaterialCommunityIcons name="calendar-check-outline" size={24} color={theme.colors.accent} />
+                <Text style={[styles.milestoneValue, { color: theme.colors.textPrimary }]}>{streaks.last30GoalHits}</Text>
+                <Text style={[styles.milestoneLabel, { color: theme.colors.textSecondary }]}>30-Day Hits</Text>
+              </View>
+              {settings.gentleGoalEnabled && streaks.currentGoodStreak !== null && (
+                <View style={[styles.milestoneBadge, { borderColor: theme.colors.border }]}>
+                  <MaterialCommunityIcons name="star-outline" size={24} color={theme.colors.accent} />
+                  <Text style={[styles.milestoneValue, { color: theme.colors.textPrimary }]}>{streaks.currentGoodStreak}</Text>
+                  <Text style={[styles.milestoneLabel, { color: theme.colors.textSecondary }]}>Good Streak</Text>
+                </View>
+              )}
+            </View>
           </AnimatedCard>
 
           {/* Best Hours */}
@@ -319,7 +361,17 @@ export default function HistoryScreen() {
             <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary }]}>
               Hourly Distribution ({selectedSummary.logHours.reduce((a, b) => a + b, 0)} logs)
             </Text>
-            <HourlyBarChart logHours={selectedSummary.logHours} goalMl={selectedSummary.goalMl} />
+            <HourlyBarChart 
+              logHours={selectedSummary.logHours} 
+              goalMl={selectedSummary.goalMl} 
+              selectedHour={selectedHour}
+              onSelectHour={setSelectedHour}
+            />
+            {contextSummary && (
+              <Text style={[{ color: theme.colors.textSecondary, fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginTop: 8 }]}>
+                {contextSummary}
+              </Text>
+            )}
 
             {/* §6.2 — Entry list or estimated-activity label */}
             {(() => {
@@ -331,28 +383,57 @@ export default function HistoryScreen() {
               const withinWindow = selectedSummary.date >= entryCutoff;
 
               if (hasEntries && withinWindow) {
-                const sorted = [...selectedSummary.entries!].sort(
+                let sorted = [...selectedSummary.entries!].sort(
                   (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                 );
+                
+                if (selectedHour !== null) {
+                  sorted = sorted.filter(e => new Date(e.timestamp).getHours() === selectedHour);
+                }
+
                 return (
                   <View style={[styles.entryListSection, { flexShrink: 1 }]}>
-                    <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary, marginTop: 20 }]}>
-                      Log Entries
-                    </Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
+                      <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary, margin: 0 }]}>
+                        Log Entries {selectedHour !== null ? `(${formatHour(selectedHour)})` : ''}
+                      </Text>
+                      {selectedHour !== null && (
+                        <Pressable onPress={() => setSelectedHour(null)}>
+                          <Text style={{ color: theme.colors.accent, fontSize: 12, fontWeight: '600' }}>Clear Filter</Text>
+                        </Pressable>
+                      )}
+                    </View>
                     <ScrollView 
-                      style={{ maxHeight: 200 }} 
+                      style={{ maxHeight: 200, marginTop: 8 }} 
                       showsVerticalScrollIndicator={false}
                     >
                       {sorted.map((entry) => (
-                        <View key={entry.id} style={[styles.entryRow, { borderColor: theme.colors.border }]}>
-                          <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
-                            {formatTimeForDisplay(new Date(entry.timestamp))}
-                          </Text>
-                          <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
-                            {formatLiquid(entry.amountMl, settings.displayUnit)}
-                          </Text>
-                        </View>
+                        <Swipeable
+                          key={entry.id}
+                          renderRightActions={() => (
+                            <Pressable 
+                              style={styles.deleteAction}
+                              onPress={() => removeLogEntry(selectedSummary.date, entry.id)}
+                            >
+                              <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FFF" />
+                            </Pressable>
+                          )}
+                        >
+                          <View style={[styles.entryRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+                            <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption }]}>
+                              {formatTimeForDisplay(new Date(entry.timestamp))}
+                            </Text>
+                            <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
+                              {formatLiquid(entry.amountMl, settings.displayUnit)}
+                            </Text>
+                          </View>
+                        </Swipeable>
                       ))}
+                      {sorted.length === 0 && (
+                        <Text style={[{ color: theme.colors.textSecondary, textAlign: 'center', marginTop: 16 }]}>
+                          No logs for this hour.
+                        </Text>
+                      )}
                     </ScrollView>
                   </View>
                 );
@@ -473,5 +554,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: "italic",
     lineHeight: 18,
+  },
+  milestoneBadge: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: "center",
+    width: "30%",
+  },
+  milestoneValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  milestoneLabel: {
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  deleteAction: {
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
   },
 });

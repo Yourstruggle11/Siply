@@ -6,9 +6,11 @@ import { useTheme } from "../theme/ThemeProvider";
 type HourlyBarChartProps = {
   logHours: Record<number, number>;
   goalMl: number;
+  selectedHour?: number | null;
+  onSelectHour?: (hour: number | null) => void;
 };
 
-export const HourlyBarChart = ({ logHours, goalMl }: HourlyBarChartProps) => {
+export const HourlyBarChart = ({ logHours, goalMl, selectedHour = null, onSelectHour }: HourlyBarChartProps) => {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
   const height = 140;
@@ -67,6 +69,29 @@ export const HourlyBarChart = ({ logHours, goalMl }: HourlyBarChartProps) => {
                 height={fillHeight}
                 rx={barWidth / 2}
                 fill={theme.colors.accent}
+                opacity={selectedHour === null || selectedHour === hour ? 1 : 0.3}
+              />
+            );
+          })}
+
+          {/* Invisible Touch Targets for each hour */}
+          {hours.map((hour) => {
+            const ml = logHours[hour] || 0;
+            if (ml === 0) return null; // Only allow tapping hours with data
+            const x = (barWidth + barSpacing) * hour;
+            return (
+              <Rect
+                key={`touch-${hour}`}
+                x={x}
+                y={0}
+                width={barWidth + barSpacing}
+                height={chartHeight}
+                fill="transparent"
+                onPress={() => {
+                  if (onSelectHour) {
+                    onSelectHour(selectedHour === hour ? null : hour);
+                  }
+                }}
               />
             );
           })}

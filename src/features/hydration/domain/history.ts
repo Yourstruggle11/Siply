@@ -226,6 +226,41 @@ export const resetHistoryForDate = (history: HydrationHistory, dateKey: string, 
   };
 };
 
+// ---------------------------------------------------------------------------
+// §11 — removeEntryFromHistory
+// Remove a specific entry by ID, and fully re-derive aggregates.
+// ---------------------------------------------------------------------------
+export const removeEntryFromHistory = (
+  history: HydrationHistory,
+  dateKey: string,
+  entryId: string
+): HydrationHistory => {
+  const daySummary = history[dateKey];
+
+  if (!daySummary?.entries || daySummary.entries.length === 0) {
+    return history;
+  }
+
+  const remainingEntries = daySummary.entries.filter((e) => e.id !== entryId);
+  if (remainingEntries.length === daySummary.entries.length) {
+    return history; // Entry not found
+  }
+
+  const { totalMl, logHours } = deriveAggregates(remainingEntries);
+
+  const nextSummary: HydrationDaySummary = {
+    ...daySummary,
+    entries: remainingEntries.length > 0 ? remainingEntries : undefined,
+    totalMl,
+    logHours,
+  };
+
+  return {
+    ...history,
+    [dateKey]: nextSummary,
+  };
+};
+
 export const buildDateKeys = (today: Date, days: number) =>
   Array.from({ length: days }, (_item, index) => getDateKey(addDays(today, -(days - 1 - index))));
 
@@ -444,4 +479,79 @@ export const computeSmartPresets = (
     // Fallback to original order
     return presets.indexOf(a) - presets.indexOf(b);
   });
+};
+
+// ---------------------------------------------------------------------------
+// §12 — computeSmartInsight
+// Returns a dynamic insight string based on recent history.
+// ---------------------------------------------------------------------------
+export const computeSmartInsight = (
+  history: HydrationHistory,
+  now: Date,
+  goalMl: number
+): string | null => {
+  if (goalMl <= 0) return null;
+  const keys = buildDateKeys(now, 14); // 2 weeks of data
+  let thisWeekVolume = 0;
+  let lastWeekVolume = 0;
+  let hasEnoughData = true;
+
+  // Split into last 7 days and the 7 days before that
+  for (let i = 0; i < 7; i++) {
+    const entryLast = history[keys[i]];
+    if (!entryLast) hasEnoughData = false;
+    lastWeekVolume += entryLast?.totalMl || 0;
+    
+    const entryThis = history[keys[i + 7]];
+    if (!entryThis) hasEnoughData = false;
+    thisWeekVolume += entryThis?.totalMl || 0;
+  }
+
+  // If we don't have a full 2 weeks of history, check for streaks
+  if (!hasEnoughData || lastWeekVolume === 0) {
+    const thisWeekGoalHits = keys.slice(7).filter(k => (history[k]?.totalMl || 0) >= goalMl).length;
+    if (thisWeekGoalHits >= 3) {
+      return "You're on a roll this week! Keep it up.";
+    }
+    return "Drink water consistently to unlock more insights.";
+  }
+
+  const diffPct = Math.round(((thisWeekVolume - lastWeekVolume) / lastWeekVolume) * 100);
+  
+  if (diffPct > 10) {
+    return `Great job! You're drinking ${diffPct}% more water this week compared to last week.`;
+  } else if (diffPct < -15) {
+    return `You're a bit behind this week. Try adding an extra glass to your routine!`;
+  } else {
+    return `You're staying remarkably consistent. Excellent work!`;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// §13 — getDayContextSummary
+// Returns a string summarizing the day's intake pattern.
+// ---------------------------------------------------------------------------
+export const getDayContextSummary = (summary: HydrationDaySummary): string | null => {
+  if (summary.totalMl === 0) return "No logs recorded for this day.";
+  
+  let morning = 0; // 5 AM - 11 AM
+  let afternoon = 0; // 12 PM - 4 PM
+  let evening = 0; // 5 PM - 11 PM
+  let night = 0; // 12 AM - 4 AM
+
+  summary.logHours.forEach((ml, hr) => {
+    if (hr >= 5 && hr < 12) morning += ml;
+    else if (hr >= 12 && hr < 17) afternoon += ml;
+    else if (hr >= 17 && hr < 24) evening += ml;
+    else night += ml;
+  });
+
+  const max = Math.max(morning, afternoon, evening, night);
+  if (max === 0) return null;
+
+  if (max === morning) return "Most of your intake happened in the morning.";
+  if (max === afternoon) return "Most of your intake happened in the afternoon.";
+  if (max === evening) return "Most of your intake happened in the evening.";
+  if (max === night) return "Most of your intake happened late at night.";
+  return null;
 };

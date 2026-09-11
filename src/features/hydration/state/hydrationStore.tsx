@@ -32,6 +32,7 @@ import {
   updateHistoryForLog,
   undoHistoryForLog,
   normalizeHistory,
+  removeEntryFromHistory,
 } from "../domain/history";
 import { Platform } from "react-native";
 
@@ -57,6 +58,7 @@ type HydrationActions = {
   addConsumed: (amountMl: number) => Promise<void>;
   /** §4.3 — no parameters: store reads the last entry from history[today].entries */
   undoLastLog: () => Promise<void>;
+  removeLogEntry: (dateKey: string, entryId: string) => Promise<void>;
   resetToday: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refreshProgressDate: () => Promise<boolean>;
@@ -178,6 +180,32 @@ export const useHydrationStore = create<HydrationStore>()(
           date: todayKey,
           consumedMl: todaySummary?.totalMl ?? 0,
         };
+
+        set({
+          progress: nextProgress,
+          history: nextHistory,
+        });
+        updateAndroidWidget();
+      },
+
+      removeLogEntry: async (dateKey: string, entryId: string) => {
+        const { history } = get();
+        const nextHistory = removeEntryFromHistory(history, dateKey, entryId);
+        if (nextHistory === history) {
+          return; // nothing changed
+        }
+
+        const todayKey = getDateKey(new Date());
+        
+        // If we deleted a log from today, we must update progress to match
+        let nextProgress = get().progress;
+        if (dateKey === todayKey) {
+          const todaySummary = nextHistory[todayKey];
+          nextProgress = {
+            date: todayKey,
+            consumedMl: todaySummary?.totalMl ?? 0,
+          };
+        }
 
         set({
           progress: nextProgress,

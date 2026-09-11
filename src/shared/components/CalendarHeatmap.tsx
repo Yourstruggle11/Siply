@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, Animated } from "react-native";
+import * as reactNative from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { useTheme } from "../theme/ThemeProvider";
 import { useHydrationStore } from "../../features/hydration/state/hydrationStore";
@@ -53,10 +54,7 @@ export const CalendarHeatmap = ({ selectedDateKey, onSelectDate }: CalendarHeatm
 
   const getOpacityForProgress = (progress: number) => {
     if (progress === 0) return 1; // background color handles zero
-    if (progress < 0.25) return 0.3;
-    if (progress < 0.5) return 0.5;
-    if (progress < 0.75) return 0.75;
-    return 1;
+    return 0.3 + 0.7 * Math.min(progress, 1);
   };
 
   return (
@@ -71,29 +69,64 @@ export const CalendarHeatmap = ({ selectedDateKey, onSelectDate }: CalendarHeatm
 
               const isSelected = day.key === selectedDateKey;
 
+const AnimatedCell = ({ day, isSelected, theme, onSelectDate, cellSize }: any) => {
+  const scale = React.useRef(new reactNative.Animated.Value(1)).current;
+
+  const handlePress = () => {
+    reactNative.Animated.sequence([
+      reactNative.Animated.timing(scale, {
+        toValue: 0.85,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      reactNative.Animated.spring(scale, {
+        toValue: 1,
+        friction: 4,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    onSelectDate(day.key);
+  };
+
+  return (
+    <reactNative.Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Date ${day.key}, Progress: ${Math.round(day.progress * 100)}%`}
+        onPress={handlePress}
+        style={[
+          styles.cellContainer,
+          isSelected && { borderColor: theme.colors.textPrimary }
+        ]}
+      >
+        <Svg width={cellSize} height={cellSize}>
+          <Rect
+            x={0}
+            y={0}
+            width={cellSize}
+            height={cellSize}
+            rx={6}
+            fill={day.progress === 0 ? theme.colors.surfaceElevated : theme.colors.accent}
+            opacity={day.progress === 0 ? 1 : (0.3 + 0.7 * Math.min(day.progress, 1))}
+          />
+        </Svg>
+      </Pressable>
+    </reactNative.Animated.View>
+  );
+};
+
+// ... inside CalendarHeatmap component ...
+
               return (
-                <Pressable
+                <AnimatedCell
                   key={day.key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Date ${day.key}, Progress: ${Math.round(day.progress * 100)}%`}
-                  onPress={() => onSelectDate(day.key)}
-                  style={[
-                    styles.cellContainer,
-                    isSelected && { borderColor: theme.colors.textPrimary }
-                  ]}
-                >
-                  <Svg width={cellSize} height={cellSize}>
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={cellSize}
-                      height={cellSize}
-                      rx={6} // rounded corners
-                      fill={getColorForProgress(day.progress)}
-                      opacity={day.progress === 0 ? 1 : getOpacityForProgress(day.progress)}
-                    />
-                  </Svg>
-                </Pressable>
+                  day={day}
+                  isSelected={isSelected}
+                  theme={theme}
+                  onSelectDate={onSelectDate}
+                  cellSize={cellSize}
+                />
               );
             })}
           </View>
