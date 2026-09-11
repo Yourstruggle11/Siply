@@ -137,19 +137,6 @@ export const computeReminderSchedule = (
     const futureTimes = plannedTimes.filter((time) => time > now);
     const times = futureTimes.slice(0, remainingCapacity);
 
-    if (isCurrent && times.length === 0 && windowMinutes > 0) {
-      const immediate = addMinutes(now, 1);
-      if (immediate < window.end) {
-        const ml = Math.max(1, remainingMl);
-        slots.push({
-          time: immediate,
-          mlPerReminder: ml,
-          sipsPerReminder: computeSipsPerReminder(ml, settings.sipMl),
-          intervalMinutes: 0,
-        });
-      }
-      continue;
-    }
     if (!times.length) {
       continue;
     }

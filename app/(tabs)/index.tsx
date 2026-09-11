@@ -299,7 +299,11 @@ export default function HomeScreen() {
                <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Next reminder</Text>
              </View>
              <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" }]}>
-               {plan.nextReminderAt ? formatTimeForDisplay(plan.nextReminderAt) : "Not scheduled"}
+               {plan.nextReminderAt 
+                 ? (plan.nextReminderAt.getDate() !== new Date().getDate() 
+                     ? `Tomorrow, ${formatTimeForDisplay(plan.nextReminderAt)}` 
+                     : formatTimeForDisplay(plan.nextReminderAt)) 
+                 : "Not scheduled"}
              </Text>
            </View>
         </AnimatedCard>
