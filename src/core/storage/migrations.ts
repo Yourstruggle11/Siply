@@ -2,9 +2,8 @@ import {
   DEFAULT_GENTLE_GOAL_THRESHOLD,
   DEFAULT_QUICK_LOG_PRESETS,
   DEFAULT_SETTINGS,
-  SCHEMA_VERSION,
 } from "../constants";
-import { getDateKey, parseTimeToMinutes } from "../time";
+import { parseTimeToMinutes } from "../time";
 import {
   HydrationHistory,
   HydrationProgress,
@@ -13,8 +12,6 @@ import {
   QuickLogState,
 } from "../../features/hydration/domain/types";
 import { normalizeHistory } from "../../features/hydration/domain/history";
-import { STORAGE_KEYS } from "./keys";
-import { getJson, setJson } from "./storage";
 
 export type HydrationStorageSnapshot = {
   settings: HydrationSettings;
@@ -79,7 +76,7 @@ export const normalizeOnboarding = (input: OnboardingState | null): OnboardingSt
 
 export const normalizeQuickLog = (input: unknown): QuickLogState => {
   const base = input as Partial<QuickLogState> | null;
-  // If presets is an array of numbers (legacy), we must convert it. 
+  // Older persisted snapshots and backups can contain numeric presets.
   // Otherwise, if it's already an array of objects, validate it.
   const rawPresets = base?.presets;
   let presets = DEFAULT_QUICK_LOG_PRESETS;
@@ -107,62 +104,3 @@ export const normalizeQuickLog = (input: unknown): QuickLogState => {
     lastLogAt: typeof base?.lastLogAt === "string" ? base.lastLogAt : null,
   };
 };
-
-export const hydrateStorage = async (): Promise<HydrationStorageSnapshot> => {
-  const todayKey = getDateKey(new Date());
-  const schemaVersion = await getJson<number>(STORAGE_KEYS.schemaVersion);
-  const rawSettings = await getJson<HydrationSettings>(STORAGE_KEYS.settings);
-  const rawProgress = await getJson<HydrationProgress>(STORAGE_KEYS.progress);
-  const rawOnboarding = await getJson<OnboardingState>(STORAGE_KEYS.onboarding);
-  const rawQuickLog = await getJson<QuickLogState>(STORAGE_KEYS.quickLog);
-  const rawHistory = await getJson<HydrationHistory>(STORAGE_KEYS.history);
-
-  const settings = normalizeSettings(rawSettings);
-  const progress = normalizeProgress(rawProgress, todayKey);
-  const onboarding = normalizeOnboarding(rawOnboarding);
-  const quickLog = normalizeQuickLog(rawQuickLog);
-  const history = normalizeHistory(rawHistory);
-
-  const shouldPersist =
-    schemaVersion !== SCHEMA_VERSION ||
-    !rawSettings ||
-    !rawProgress ||
-    !rawOnboarding ||
-    !rawQuickLog ||
-    !rawHistory ||
-    progress.date !== rawProgress?.date;
-
-  if (shouldPersist) {
-    await Promise.all([
-      setJson(STORAGE_KEYS.schemaVersion, SCHEMA_VERSION),
-      setJson(STORAGE_KEYS.settings, settings),
-      setJson(STORAGE_KEYS.progress, progress),
-      setJson(STORAGE_KEYS.onboarding, onboarding),
-      setJson(STORAGE_KEYS.quickLog, quickLog),
-      setJson(STORAGE_KEYS.history, history),
-    ]);
-  }
-
-  let firstLaunchAt = await getJson<string>(STORAGE_KEYS.firstLaunchAt);
-  if (!firstLaunchAt) {
-    firstLaunchAt = new Date().toISOString();
-    await setJson(STORAGE_KEYS.firstLaunchAt, firstLaunchAt);
-  }
-
-  return { settings, progress, onboarding, quickLog, history };
-};
-
-export const persistSettings = async (settings: HydrationSettings) =>
-  setJson(STORAGE_KEYS.settings, settings);
-
-export const persistProgress = async (progress: HydrationProgress) =>
-  setJson(STORAGE_KEYS.progress, progress);
-
-export const persistOnboarding = async (onboarding: OnboardingState) =>
-  setJson(STORAGE_KEYS.onboarding, onboarding);
-
-export const persistQuickLog = async (quickLog: QuickLogState) =>
-  setJson(STORAGE_KEYS.quickLog, quickLog);
-
-export const persistHistory = async (history: HydrationHistory) =>
-  setJson(STORAGE_KEYS.history, history);

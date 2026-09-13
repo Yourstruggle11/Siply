@@ -110,6 +110,32 @@ describe("updateHistoryForLog", () => {
     expect(day.totalMl).toBe(750);
   });
 
+  it("preserves a summary-only current day's earlier intake", () => {
+    const existingHours = Array<number>(24).fill(0);
+    const existingHour = (fixedNow.getHours() + 1) % 24;
+    existingHours[existingHour] = 2;
+    const input: HydrationHistory = {
+      [dateKey]: {
+        date: dateKey,
+        totalMl: 1000,
+        goalMl: 2500,
+        goodThresholdMl: 1500,
+        logHours: existingHours,
+      },
+    };
+
+    const result = updateHistoryForLog(input, fixedNow, 250, 3000, 1800);
+    const day = result[dateKey];
+
+    expect(day.totalMl).toBe(1250);
+    expect(day.entries).toBeUndefined();
+    expect(day.logHours[existingHour]).toBe(2);
+    expect(day.logHours[fixedNow.getHours()]).toBe(1);
+    expect(day.goalMl).toBe(3000);
+    expect(day.goodThresholdMl).toBe(1800);
+    expect(input[dateKey].totalMl).toBe(1000);
+  });
+
   it("is a no-op for amountMl <= 0", () => {
     const result = updateHistoryForLog({}, fixedNow, 0, 3000, 1800);
     expect(result).toEqual({});

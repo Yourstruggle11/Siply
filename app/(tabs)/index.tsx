@@ -9,7 +9,7 @@ import { useTheme } from "../../src/shared/theme/ThemeProvider";
 import { useHydrationStore } from "../../src/features/hydration/state/hydrationStore";
 import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
 import { formatTimeForDisplay, getDateKey, setTimeOnDate } from "../../src/core/time";
-import { formatLiquid } from "../../src/core/units";
+import { formatLiquid, parseLiquidInputToMl } from "../../src/core/units";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
@@ -145,9 +145,9 @@ export default function HomeScreen() {
   const handlePresetLog = (amountMl: number) => handleLog(amountMl);
 
   const handleCustomAdd = () => {
-    const parsed = Number.parseInt(customAmount, 10);
-    if (parsed) {
-      void handleLog(parsed);
+    const amountMl = parseLiquidInputToMl(customAmount, settings.displayUnit);
+    if (amountMl !== null) {
+      void handleLog(amountMl);
       setCustomAmount("");
       setShowAddAmount(false);
     }

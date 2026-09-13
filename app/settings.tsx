@@ -26,7 +26,7 @@ import {
 import { exportBackup } from "../src/features/hydration/backup/export";
 import { importBackup } from "../src/features/hydration/backup/import";
 import { STORAGE_KEYS } from "../src/core/storage/keys";
-import { getJson } from "../src/core/storage/storage";
+import { ensureFirstLaunchAt, getJson } from "../src/core/storage/storage";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -177,10 +177,10 @@ export default function SettingsScreen() {
     const checkBackupStatus = async () => {
       try {
         const lastExportStr = await getJson<string>(STORAGE_KEYS.lastExportAt);
-        const firstLaunchStr = await getJson<string>(STORAGE_KEYS.firstLaunchAt);
+        const firstLaunchStr = await ensureFirstLaunchAt();
         
         const lastExport = lastExportStr ? new Date(lastExportStr) : null;
-        const firstLaunch = firstLaunchStr ? new Date(firstLaunchStr) : new Date();
+        const firstLaunch = new Date(firstLaunchStr);
         
         const comparisonDate = lastExport || firstLaunch;
         const daysSince = (Date.now() - comparisonDate.getTime()) / (1000 * 60 * 60 * 24);

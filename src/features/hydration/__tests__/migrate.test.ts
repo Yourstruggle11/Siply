@@ -1,14 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { migrateStorage } from "../state/hydrationStore";
-import * as migrations from "../../../core/storage/migrations";
-
-vi.mock("../../../core/storage/migrations", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../core/storage/migrations")>();
-  return {
-    ...actual,
-    hydrateStorage: vi.fn(),
-  };
-});
+import { DEFAULT_SETTINGS } from "../../../core/constants";
+import { getDateKey } from "../../../core/time";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -19,19 +12,16 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 describe("migrateStorage", () => {
-  it("migrates legacy state when empty", async () => {
-    vi.mocked(migrations.hydrateStorage).mockResolvedValueOnce({
-      settings: { targetLiters: 5 } as any,
-      progress: { consumedMl: 100 } as any,
-      history: {},
-      quickLog: { presets: [] } as any,
-      onboarding: { completed: true },
-    });
-
+  it("normalizes an empty snapshot to current defaults", async () => {
     const result = await migrateStorage(null, 1);
-    expect(migrations.hydrateStorage).toHaveBeenCalled();
-    expect(result.settings.targetLiters).toBe(5);
-    expect(result.progress.consumedMl).toBe(100);
+    expect(result.settings).toEqual(DEFAULT_SETTINGS);
+    expect(result.progress).toEqual({
+      date: getDateKey(new Date()),
+      consumedMl: 0,
+    });
+    expect(result.onboarding.completed).toBe(false);
+    expect(result.quickLog.presets.length).toBeGreaterThan(0);
+    expect(result.history).toEqual({});
   });
 
   it("migrates existing state when not empty", async () => {

@@ -1,19 +1,24 @@
 import * as TaskManager from "expo-task-manager";
 import * as BackgroundTask from "expo-background-task";
 import { rescheduleNotifications } from "./notifier";
-import { hydrateStorage } from "../../../core/storage/migrations";
+import { readPersistedHydrationSnapshot } from "../state/hydrationStore";
 
 export const BACKGROUND_FETCH_TASK = "siply-background-fetch";
 
-TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
+export const runBackgroundNotificationTask = async () => {
   try {
-    const snapshot = await hydrateStorage();
-    if (!snapshot.onboarding.completed) {
+    const snapshot = await readPersistedHydrationSnapshot();
+    if (!snapshot?.onboarding.completed) {
       return BackgroundTask.BackgroundTaskResult.Success;
     }
 
-    const result = await rescheduleNotifications(snapshot.settings, snapshot.progress.consumedMl, new Date(), snapshot.quickLog.lastLogAt);
-    
+    const result = await rescheduleNotifications(
+      snapshot.settings,
+      snapshot.progress.consumedMl,
+      new Date(),
+      snapshot.quickLog.lastLogAt
+    );
+
     if (result.success && result.scheduled > 0) {
       return BackgroundTask.BackgroundTaskResult.Success;
     }
@@ -22,7 +27,9 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
     console.error("Siply: background fetch task failed", error);
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
-});
+};
+
+TaskManager.defineTask(BACKGROUND_FETCH_TASK, runBackgroundNotificationTask);
 
 export const registerBackgroundFetchAsync = async () => {
   try {

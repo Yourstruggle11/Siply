@@ -44,6 +44,29 @@ describe("Zustand Store Actions", () => {
     expect(updated.quickLog.lastUsedMl).toBe(250);
   });
 
+  it("addConsumed preserves an existing summary-only total", async () => {
+    const todayKey = getDateKey(new Date());
+    useHydrationStore.setState({
+      progress: { date: todayKey, consumedMl: 700 },
+      history: {
+        [todayKey]: {
+          date: todayKey,
+          totalMl: 700,
+          goalMl: 3000,
+          goodThresholdMl: 1800,
+          logHours: Array<number>(24).fill(0),
+        },
+      },
+    });
+
+    await useHydrationStore.getState().addConsumed(300);
+
+    const updated = useHydrationStore.getState();
+    expect(updated.progress.consumedMl).toBe(1000);
+    expect(updated.history[todayKey].totalMl).toBe(1000);
+    expect(updated.history[todayKey].entries).toBeUndefined();
+  });
+
   it("undoLastLog reverts the previous addConsumed", async () => {
     const store = useHydrationStore.getState();
     await store.addConsumed(250);

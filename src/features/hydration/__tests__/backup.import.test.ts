@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mock react-native (Alert) ─────────────────────────────────────────────────
-// Prevent Vitest from parsing react-native's Flow-typed source.
-vi.mock("react-native", () => ({
-  Alert: { alert: vi.fn() },
-}));
+// React Native is mocked centrally in vitest.setup.ts.
 
 // ── Mock expo-document-picker ─────────────────────────────────────────────────
 vi.mock("expo-document-picker", () => ({
@@ -41,7 +38,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 // ── Import after mocks ─────────────────────────────────────────────────────────
 import { Alert } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import { importBackup } from "../backup/import";
+import { importBackup, processBackupUri } from "../backup/import";
 import { useHydrationStore } from "../state/hydrationStore";
 import * as notifier from "../notifications/notifier";
 
@@ -211,6 +208,27 @@ describe("importBackup", () => {
     await importBackup();
 
     expect(JSON.stringify(useHydrationStore.getState())).toBe(stateBefore);
+  });
+
+  it("silently ignores unrelated JSON from a generic incoming URI", async () => {
+    mockText.mockResolvedValue(JSON.stringify({ unrelated: true }));
+    const stateBefore = JSON.stringify(useHydrationStore.getState());
+    vi.mocked(Alert.alert).mockClear();
+
+    await processBackupUri("content://documents/42", { silentInvalid: true });
+
+    expect(vi.mocked(Alert.alert)).not.toHaveBeenCalled();
+    expect(JSON.stringify(useHydrationStore.getState())).toBe(stateBefore);
+  });
+
+  it("accepts a valid backup from a generic incoming URI without a filename", async () => {
+    mockText.mockResolvedValue(VALID_BACKUP_JSON);
+    mockAlertConfirm(true);
+
+    await processBackupUri("file://documents/42", { silentInvalid: true });
+
+    expect(useHydrationStore.getState().settings.targetLiters).toBe(2.5);
+    expect(notifier.rescheduleNotifications).toHaveBeenCalledOnce();
   });
 
   // ── Confirmation dialog rejection ─────────────────────────────────────────────

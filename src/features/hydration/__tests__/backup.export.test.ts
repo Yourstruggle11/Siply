@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mock react-native (Alert) ─────────────────────────────────────────────────
-// Prevent Vitest from parsing react-native's Flow-typed source.
-vi.mock("react-native", () => ({
-  Alert: { alert: vi.fn() },
-}));
+// React Native is mocked centrally in vitest.setup.ts.
 
 // ── Mock expo-file-system ───────────────────────────────────────────────────
 const { mockWrite, mockDelete, mockFile } = vi.hoisted(() => {

@@ -1,86 +1,109 @@
 # <img src="assets/icon.png" alt="Siply icon" width="24" height="24" style="vertical-align:middle; margin-right:6px;" /> Siply
 
-**Drink water, on time.**
-Siply is a highly polished, premium hydration tracking app built with React Native and Expo. It goes beyond simple buttons by offering intelligent, personality-driven reminders, deep data insights, and seamless OS integrations.
+Siply is a local-first hydration tracker built with React Native, Expo 54, and expo-router. It stores hydration settings and history on the device, schedules local reminders, and does not require an account or backend.
 
-## 🚀 Key Features
+## Current features
 
-### 💧 Smart Hydration Engine
-- **Customizable Targets:** Set daily goals, custom active hours (e.g. 07:00 to 23:00), and custom sip sizes.
-- **Quick Logging:** Fluid, haptic-enabled UI for quickly logging presets.
-- **Dynamic Theming:** Premium dark and light mode designs featuring glassmorphic accents and rich gradients.
+- Daily hydration target, active reminder window, sip size, gentle-goal threshold, and light/dark/system appearance.
+- Three-tab interface: Today, History, and You, with a separate Settings route.
+- Quick logging with named drink presets, custom preset amounts, manual reordering, and recent time-of-day ordering.
+- Per-entry logs with exact timestamps and amounts for the most recent seven days; 120 days of daily summaries are retained.
+- Undo of the latest log on Today and swipe-to-delete for retained entries in History.
+- Display and custom-entry conversion for millilitres, US fluid ounces, and cups. Stored values remain millilitres.
+- A 28-day calendar heatmap, day-detail sheet, hourly activity, streaks, best hours by estimated/exact volume, 90-day line/bar trends, average intake, goal-hit rate, and local heuristic insights.
+- Shareable progress images in a native development/production build.
+- JSON backup export/import with validation, confirmation, history merging, `.siply.json` file associations, and validated handling of generic file-provider URIs.
+- Two read-only Android home-screen widgets (circular and linear). Tapping a widget opens Siply.
+- Milestone celebrations when a log completes a 7-, 30-, or 100-day streak.
 
-### 🔔 Intelligent Notification System
-- **Adaptive Scheduling:** Local notifications are scheduled dynamically based on your progress and remaining active window time. If you hit your target early, reminders stop automatically.
-- **Interactive Actions:** Users can log a drink ("I drank"), "Snooze" for later, or "Skip" entirely—right from the lock screen without opening the app!
-- **Notification Tones:** Reminders are tailored with distinct personalities (Minimal, Friendly, or Playful) that adapt to context (e.g., morning check-ins vs. late-night catch-ups).
-- **Background Sync:** Reliable background tasks keep notification schedules and badges perfectly synced even if the app was force-killed.
+## Notifications
 
-### 📊 History & Smart Insights
-- **Rich Analytics:** Visual 7-day and 30-day progress charts, best streaks, and average intake metrics.
-- **Smart Insights Engine:** Siply analyzes your history to generate meaningful, contextual insights (e.g., "You consistently hit your goals early!", "You struggle on weekends, keep pushing!").
-- **Shareable Cards:** Users can export beautiful, custom-rendered images of their progress via `react-native-view-shot` and the native OS share sheet.
+Siply calculates reminder amounts from the remaining daily target and the remaining active window. It schedules a rolling 24-hour set of local notifications, up to 48 scheduled items, and can add nudges 5 and 10 minutes after a reminder.
 
-### 📱 Android Home Screen Widgets
-- **Premium Glassmorphic Design:** Two stunning widgets (Circular and Linear) featuring deep gradient backgrounds and simulated neon glows.
-- **Interactive:** Tapping the widgets instantly deep-links back into the app.
-- **Background Updates:** Widgets automatically refresh in the background via Expo Task Manager.
+Reminder notifications provide these actions:
 
-### 💾 Data Portability & Deep Linking
-- **JSON Backups:** Export entire app state (settings, history, logs) as a `.siply.json` backup file.
-- **Seamless Restore:** Native Android and iOS file association allows users to tap a `.siply.json` file in an email or file manager to instantly open Siply and begin the import flow.
+- **I drank** logs the amount encoded in the notification and opens the app.
+- **Snooze 30 min** schedules one replacement reminder.
+- **Skip** dismisses the notification without logging.
 
----
+The app also schedules an end-of-window summary using the progress known when the schedule is created. Reminder copy can be encouraging, minimal, or playful. Android uses separate sound and silent notification channels.
 
-## 🛠 Setup & Development
+Siply reschedules after hydration, on relevant state changes, when returning to the foreground, after a restore, and through a best-effort Expo background task. The background path reads and normalizes the same persisted Zustand snapshot as the foreground app. The operating system still controls whether and when background work runs, so device-level timing is not guaranteed.
 
-### 1) Install dependencies
+## Privacy and offline behavior
+
+There are no accounts, backend calls, analytics SDKs, crash-reporting SDKs, or cloud sync. Hydration data stays in AsyncStorage unless the user explicitly exports or shares it. AsyncStorage is app-private but is not an encrypted-at-rest vault, and uninstalling the app removes its local data unless the user has saved a backup.
+
+## Architecture
+
+The app uses expo-router for file-based navigation and a feature-vertical source layout:
+
+```text
+app/                                  routes and application wiring
+src/core/                             constants, time/unit helpers, storage normalization
+src/features/hydration/domain/        calculations, schedule, history, domain types
+src/features/hydration/state/         Zustand store and persistence
+src/features/hydration/notifications/ scheduling, actions, background task, diagnostics
+src/features/hydration/backup/        export, import, validation, merge
+src/features/hydration/widgets/       Android widget renderer and task handler
+src/features/hydration/ui/            hydration-specific UI
+src/shared/                            reusable components, hooks, theme, haptics
+scripts/                               icon generation
+```
+
+State is managed by Zustand selectors. Zustand's persistence middleware stores the app state as one JSON value under `siply:hydration_store:v1`, with schema version 3. Older Zustand schema versions are normalized through the same migration path; the retired six-key persistence model is no longer present. Separate AsyncStorage keys hold notification-action deduplication, diagnostics, first-launch time, and last-export time; those operational values are not included in backups.
+
+History days may contain `entries` (`id`, ISO timestamp, and `amountMl`). Entry arrays are retained for seven days; daily totals, goals, hourly counts, and other summaries are retained for 120 days. Backup merging unions retained entries by ID where possible and otherwise keeps the higher known daily total.
+
+## Setup
+
+Requirements:
+
+- Node.js and npm
+- Expo/EAS tooling available through `npx`
+- Android Studio or Xcode for local native builds, as applicable
+- An Expo account for EAS builds
+
+Install dependencies:
+
 ```bash
 npm install
 ```
 
-### 2) Generate icons
+Generate PNG icons from the source SVG when the icon source changes:
+
 ```bash
 npm run generate:icons
 ```
 
-### 3) Start the app
+Start Metro for a custom development client:
+
 ```bash
 npm start
 ```
-*Note: Due to custom native Android widget code and deep linking intent filters in `app.json`, a custom development client (`expo start --dev-client`) or a native rebuild (`npx expo run:android`) is recommended to test all features.*
 
----
+The `start` script runs `expo start --dev-client`. `npm run android`, `npm run ios`, and `npm run web` start the corresponding Expo targets, but native-only behavior cannot be fully verified in Expo Go or on web. Android widgets, notification channels/actions, bundled notification sound, background tasks, and file associations require a native development or release build.
 
-## 🏗 Architecture Notes
+## Builds
 
-### File Association & Deep Links
-- iOS utilizes `CFBundleDocumentTypes` and Android utilizes `intentFilters` in `app.json` to map `.siply.json` to Siply.
-- Deep links are intercepted in `app/_layout.tsx` using `expo-linking`, heavily fortified with `expo-file-system/legacy` caching to securely read Android `content://` URIs natively.
+Create EAS development clients:
 
-### Notification Deduplication
-- Interactive actions ("Log", "Snooze") are instantly de-duplicated utilizing an internal `AsyncStorage` map with TTLs to prevent rapid double-taps from polluting the hydration store.
+```bash
+npm run dev:android
+npm run dev:ios
+```
 
-### Diagnostics Panel (Feature Flag)
-- Disabled by default. Enable with `EXPO_PUBLIC_SIPLY_DIAGNOSTICS=1` (or `true`).
-- When enabled, Settings shows a Notification diagnostics panel with raw scheduling data export.
+Create internal preview builds:
 
----
-
-## 📦 Builds (Shareable Test Builds)
-
-**Android (APK, easiest to share):**
 ```bash
 npm run build:android:preview
+npm run build:ios:preview
 ```
-*Android release size is optimized with Proguard/resource shrinking (see `app.json`).*
 
-**iOS (IPA, internal distribution):**
-- Register devices once: `npm run eas:devices`
-- Build: `npm run build:ios:preview`
-*(Requires an Apple Developer account and registered device UDIDs).*
+Create production builds for both platforms:
 
-**Production (both platforms):**
 ```bash
 npm run build:all:production
 ```
+
+Android is configured with package `com.yourstruggle11.siply`, ProGuard, and resource shrinking. The repository does not currently declare an iOS `bundleIdentifier`; configure one before relying on iOS distribution. Internal iOS distribution also requires an Apple Developer account and registered devices (`npm run eas:devices`).

@@ -34,3 +34,16 @@ export const convertFromUnit = (amount: number, unit: DisplayUnit): number => {
   }
   return amount;
 };
+
+export const parseLiquidInputToMl = (
+  input: string,
+  unit: DisplayUnit
+): number | null => {
+  const amount = Number(input.trim());
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  const amountMl = Math.round(convertFromUnit(amount, unit));
+  return amountMl > 0 ? amountMl : null;
+};

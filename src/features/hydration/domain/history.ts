@@ -139,6 +139,32 @@ export const updateHistoryForLog = (
   const dateKey = getDateKey(now);
   const existing = history[dateKey];
 
+  // A summary-only current day can come from an older persisted snapshot or
+  // backup. Its individual entries cannot be reconstructed truthfully. Keep
+  // that day summary-only and add to its known aggregates so the first new log
+  // cannot erase intake recorded earlier that day.
+  if (
+    existing &&
+    (!existing.entries || existing.entries.length === 0) &&
+    existing.totalMl > 0
+  ) {
+    const logHours = ensureLogHours(existing.logHours);
+    logHours[now.getHours()] += 1;
+
+    return {
+      ...history,
+      [dateKey]: {
+        ...existing,
+        date: dateKey,
+        totalMl: existing.totalMl + amountMl,
+        goalMl,
+        goodThresholdMl,
+        logHours,
+        entries: undefined,
+      },
+    };
+  }
+
   // Create the new entry — ID is timestamp-ms + 4-char random suffix for
   // same-millisecond safety (no external dependency needed).
   const newEntry: LogEntry = {

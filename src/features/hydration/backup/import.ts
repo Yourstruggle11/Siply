@@ -67,13 +67,24 @@ export async function importBackup(): Promise<void> {
 /**
  * Processes a .siply.json backup file from a given URI.
  */
-export async function processBackupUri(fileUri: string): Promise<void> {
+type ProcessBackupUriOptions = {
+  silentInvalid?: boolean;
+};
+
+export async function processBackupUri(
+  fileUri: string,
+  options: ProcessBackupUriOptions = {}
+): Promise<void> {
+  const showInvalidAlert = !options.silentInvalid;
+
   // ── Step 2: Read file contents ────────────────────────────────────────────
   let contents: string;
   try {
     contents = await new File(fileUri).text();
   } catch {
-    Alert.alert("Import failed", "Could not read the selected file.");
+    if (showInvalidAlert) {
+      Alert.alert("Import failed", "Could not read the selected file.");
+    }
     return;
   }
 
@@ -82,25 +93,29 @@ export async function processBackupUri(fileUri: string): Promise<void> {
   try {
     parsed = JSON.parse(contents);
   } catch {
-    Alert.alert("Import failed", "The selected file is not a valid JSON file.");
+    if (showInvalidAlert) {
+      Alert.alert("Import failed", "The selected file is not a valid JSON file.");
+    }
     return;
   }
 
   // ── Step 4: Schema validation ─────────────────────────────────────────────
   const validation = validateSiplyBackup(parsed);
   if (!validation.valid) {
-    Alert.alert(
-      "Import failed",
-      `This file is not a valid Siply backup.\n\n${validation.reason}`
-    );
+    if (showInvalidAlert) {
+      Alert.alert(
+        "Import failed",
+        `This file is not a valid Siply backup.\n\n${validation.reason}`
+      );
+    }
     return;
   }
 
   const backup = validation.backup;
 
   // ── Step 5: Normalise through migrate functions ───────────────────────────
-  // Call normalize* directly (not via migrateStorage, which has async legacy
-  // bridging logic we do not want during import — see §7.2 of design doc).
+  // Call normalize* directly because a backup is not a Zustand persistence
+  // envelope and has already passed backup-format validation.
   const todayKey = getDateKey(new Date());
   const normSettings = normalizeSettings(backup.settings);
   const normProgress = normalizeProgress(backup.progress, todayKey);

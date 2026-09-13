@@ -10,7 +10,7 @@ import {
   SCHEMA_VERSION,
 } from "../../../core/constants";
 import {
-  hydrateStorage,
+  type HydrationStorageSnapshot,
   normalizeOnboarding,
   normalizeProgress,
   normalizeQuickLog,
@@ -68,20 +68,17 @@ type HydrationActions = {
 
 export type HydrationStore = HydrationState & HydrationActions;
 
+export const HYDRATION_STORE_STORAGE_KEY = "siply:hydration_store:v1";
+
 // ---------------------------------------------------------------------------
 // §3.3 — migrateStorage with version-gated pattern
 // ---------------------------------------------------------------------------
 export const migrateStorage = async (persistedState: unknown, version: number) => {
   const todayKey = getDateKey(new Date());
-
-  // Case 1: Empty persisted state — attempt legacy 6-key migration
-  if (!persistedState || Object.keys(persistedState as any).length === 0) {
-    const legacyState = await hydrateStorage();
-    return legacyState as any;
-  }
-
-  // Case 2: Non-empty — normalise each slice defensively
-  const state = persistedState as Partial<HydrationState>;
+  const state =
+    persistedState && typeof persistedState === "object"
+      ? (persistedState as Partial<HydrationState>)
+      : {};
   const normalised = {
     settings: normalizeSettings(state.settings ?? null),
     progress: normalizeProgress(state.progress ?? null, todayKey),
@@ -102,6 +99,47 @@ export const migrateStorage = async (persistedState: unknown, version: number) =
   }
 
   return normalised as any;
+};
+
+/**
+ * Read and normalize the persisted Zustand snapshot without mounting React.
+ * Headless consumers (for example background tasks) use this so they schedule
+ * from the same source of truth as the app.
+ */
+export const readPersistedHydrationSnapshot = async (): Promise<
+  HydrationStorageSnapshot | null
+> => {
+  const raw = await AsyncStorage.getItem(HYDRATION_STORE_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const envelope = JSON.parse(raw) as { state?: unknown; version?: unknown };
+    if (
+      !envelope.state ||
+      typeof envelope.state !== "object" ||
+      Object.keys(envelope.state as object).length === 0
+    ) {
+      return null;
+    }
+
+    const version =
+      typeof envelope.version === "number" && Number.isFinite(envelope.version)
+        ? envelope.version
+        : 0;
+    const state = await migrateStorage(envelope.state, version);
+
+    return {
+      settings: state.settings,
+      progress: state.progress,
+      onboarding: state.onboarding,
+      quickLog: state.quickLog,
+      history: state.history,
+    };
+  } catch {
+    return null;
+  }
 };
 
 export const useHydrationStore = create<HydrationStore>()(
@@ -268,7 +306,7 @@ export const useHydrationStore = create<HydrationStore>()(
       },
     }),
     {
-      name: "siply:hydration_store:v1",
+      name: HYDRATION_STORE_STORAGE_KEY,
       storage: createJSONStorage(() => AsyncStorage),
       version: SCHEMA_VERSION,
       migrate: migrateStorage,
