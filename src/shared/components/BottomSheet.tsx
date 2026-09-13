@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Dimensions, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
@@ -14,8 +14,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { useTheme } from "../theme/ThemeProvider";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 type BottomSheetProps = {
   visible: boolean;
   onDismiss: () => void;
@@ -24,6 +22,7 @@ type BottomSheetProps = {
 
 export const BottomSheet = ({ visible, onDismiss, children }: BottomSheetProps) => {
   const theme = useTheme();
+  const { height: screenHeight } = useWindowDimensions();
   const translateY = useSharedValue(0);
 
   // Reset transform when shown
@@ -45,7 +44,7 @@ export const BottomSheet = ({ visible, onDismiss, children }: BottomSheetProps) 
     .onEnd((event) => {
       if (event.translationY > 100 || event.velocityY > 1000) {
         // Dragged enough to dismiss
-        translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 }, () => {
+        translateY.value = withTiming(screenHeight, { duration: 250 }, () => {
           runOnJS(onDismiss)();
         });
       } else {
@@ -72,22 +71,29 @@ export const BottomSheet = ({ visible, onDismiss, children }: BottomSheetProps) 
         <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="Dismiss sheet" />
       </Animated.View>
 
-      <GestureDetector gesture={panGesture}>
-        <Animated.View
-          style={[
-            styles.sheet,
-            { backgroundColor: theme.colors.surface },
-            animatedStyle,
-          ]}
-          entering={SlideInDown.springify().damping(20).stiffness(200)}
-          exiting={SlideOutDown.duration(200)}
-        >
+      <Animated.View
+        style={[
+          styles.sheet,
+          { backgroundColor: theme.colors.surface, maxHeight: screenHeight * 0.8 },
+          animatedStyle,
+        ]}
+        entering={SlideInDown.springify().damping(20).stiffness(200)}
+        exiting={SlideOutDown.duration(200)}
+      >
+        <GestureDetector gesture={panGesture}>
           <View style={styles.handleContainer}>
             <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
           </View>
+        </GestureDetector>
+        <ScrollView
+          style={styles.contentScroll}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator
+          keyboardShouldPersistTaps="handled"
+        >
           {children}
-        </Animated.View>
-      </GestureDetector>
+        </ScrollView>
+      </Animated.View>
     </View>
   );
 };
@@ -100,10 +106,7 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 48,
     paddingTop: 12,
-    maxHeight: SCREEN_HEIGHT * 0.8,
     elevation: 24,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
@@ -113,10 +116,19 @@ const styles = StyleSheet.create({
   handleContainer: {
     alignItems: "center",
     marginBottom: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 4,
   },
   handle: {
     width: 40,
     height: 4,
     borderRadius: 2,
+  },
+  contentScroll: {
+    flexShrink: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 48,
   },
 });

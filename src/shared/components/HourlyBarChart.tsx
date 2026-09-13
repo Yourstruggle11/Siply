@@ -4,13 +4,12 @@ import Svg, { Rect, Text as SvgText, Line } from "react-native-svg";
 import { useTheme } from "../theme/ThemeProvider";
 
 type HourlyBarChartProps = {
-  logHours: Record<number, number>;
-  goalMl: number;
+  hourlyVolumes: number[];
   selectedHour?: number | null;
   onSelectHour?: (hour: number | null) => void;
 };
 
-export const HourlyBarChart = ({ logHours, goalMl, selectedHour = null, onSelectHour }: HourlyBarChartProps) => {
+export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHour }: HourlyBarChartProps) => {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
   const height = 140;
@@ -22,7 +21,7 @@ export const HourlyBarChart = ({ logHours, goalMl, selectedHour = null, onSelect
   // Scale heights based on actual volume relative to a reasonable peak.
   // E.g., if a user drinks 1000ml in an hour, that's a huge peak. We scale against the max hourly volume,
   // but ensure a minimum scale so tiny sips don't look massive.
-  const maxVolume = Math.max(500, ...Object.values(logHours));
+  const maxVolume = Math.max(500, ...hourlyVolumes);
 
   const barWidth = width > 0 ? (width / 24) * 0.6 : 0;
   const barSpacing = width > 0 ? (width / 24) * 0.4 : 0;
@@ -51,9 +50,9 @@ export const HourlyBarChart = ({ logHours, goalMl, selectedHour = null, onSelect
             );
           })}
 
-          {/* Active fill bars driven by exact volume data */}
+          {/* Active fill bars driven by exact or explicitly estimated volume data */}
           {hours.map((hour) => {
-            const ml = logHours[hour] || 0;
+            const ml = hourlyVolumes[hour] || 0;
             if (ml === 0) return null;
             
             const fillHeight = Math.max(barWidth, (ml / maxVolume) * chartHeight);
@@ -76,7 +75,7 @@ export const HourlyBarChart = ({ logHours, goalMl, selectedHour = null, onSelect
 
           {/* Invisible Touch Targets for each hour */}
           {hours.map((hour) => {
-            const ml = logHours[hour] || 0;
+            const ml = hourlyVolumes[hour] || 0;
             if (ml === 0) return null; // Only allow tapping hours with data
             const x = (barWidth + barSpacing) * hour;
             return (

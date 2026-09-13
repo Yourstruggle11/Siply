@@ -340,18 +340,24 @@ export default function YouScreen() {
                 <View style={styles.presetActions}>
                   <Pressable
                     onPress={() => movePreset(index, -1)}
+                    disabled={index === 0}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${name || "Water"} up`}
                     style={({ pressed }) => [
                       styles.iconButton,
-                      { borderColor: theme.colors.border, opacity: pressed ? 0.6 : 1 },
+                      { borderColor: theme.colors.border, opacity: index === 0 ? 0.4 : pressed ? 0.6 : 1 },
                     ]}
                   >
                     <Text style={[styles.iconText, { color: theme.colors.textSecondary }]}>Up</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => movePreset(index, 1)}
+                    disabled={index === quickLog.presets.length - 1}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${name || "Water"} down`}
                     style={({ pressed }) => [
                       styles.iconButton,
-                      { borderColor: theme.colors.border, opacity: pressed ? 0.6 : 1 },
+                      { borderColor: theme.colors.border, opacity: index === quickLog.presets.length - 1 ? 0.4 : pressed ? 0.6 : 1 },
                     ]}
                   >
                     <Text style={[styles.iconText, { color: theme.colors.textSecondary }]}>Down</Text>
@@ -359,6 +365,8 @@ export default function YouScreen() {
                   <Pressable
                     onPress={() => removePreset(index)}
                     disabled={quickLog.presets.length <= QUICK_LOG_MIN_PRESETS}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${name || "Water"}`}
                     style={({ pressed }) => [
                       styles.iconButton,
                       {
@@ -502,7 +510,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   drinkOptionButton: {
-    width: '30%',
+    flexBasis: 84,
+    flexGrow: 1,
+    minWidth: 72,
     paddingVertical: 10,
     alignItems: "center",
     borderWidth: 1,
@@ -527,19 +537,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   presetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    gap: 12,
   },
   presetLabelRow: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
-    marginRight: 8,
+    width: "100%",
   },
   presetLabel: {
     fontSize: 16,
@@ -549,8 +556,13 @@ const styles = StyleSheet.create({
   presetActions: {
     flexDirection: "row",
     gap: 8,
+    width: "100%",
   },
   iconButton: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -567,10 +579,12 @@ const styles = StyleSheet.create({
   },
   presetAddRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "flex-end",
     gap: 12,
   },
   presetAddField: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 150,
   },
 });

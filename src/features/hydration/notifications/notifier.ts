@@ -11,6 +11,7 @@ import {
   NOTIFICATION_ACTION_VIEW_HISTORY,
   NUDGE_MINUTES,
 } from "../../../core/constants";
+import { buildDailySummaryBody } from "./summaryContent";
 import { addMinutes } from "../../../core/time";
 import { computeReminderSchedule } from "../domain/schedule";
 import { computeSipsPerReminder } from "../domain/calculations";
@@ -380,12 +381,8 @@ export const scheduleNotifications = async (
     
     // Only schedule if the window end is still coming up today (within our 24h horizon)
     if (summaryTime > now && summaryTime <= horizonEnd) {
-      const targetMl = settings.targetLiters * 1000;
-      const pct = targetMl > 0 ? Math.round((consumedMl / targetMl) * 100) : 0;
-      const message = pct >= 100 ? "Great job!" : "Keep it up tomorrow!";
-      
       const summaryContent = buildContent(
-        `You drank ${consumedMl} ml today (${pct}% of your goal). ${message}`,
+        buildDailySummaryBody(),
         settings.soundEnabled,
         NOTIFICATION_CATEGORY_SUMMARY_ID
       );

@@ -5,6 +5,8 @@ import {
   undoHistoryForLog,
   updateHistoryForLog,
   computeStreakStats,
+  getDayContextSummary,
+  getHourlyVolumeDistribution,
 } from "../domain/history";
 import { addDays, getDateKey } from "../../../core/time";
 import type { HydrationHistory, LogEntry } from "../domain/types";
@@ -72,6 +74,54 @@ describe("deriveAggregates", () => {
   it("produces exactly 24 logHours slots", () => {
     const { logHours } = deriveAggregates([]);
     expect(logHours).toHaveLength(24);
+  });
+});
+
+describe("getHourlyVolumeDistribution", () => {
+  it("uses exact millilitre amounts when entries are available", () => {
+    const morning = new Date(2026, 8, 7, 8, 0, 0);
+    const afternoon = new Date(2026, 8, 7, 13, 0, 0);
+    const entries = [
+      makeEntry("morning", morning.toISOString(), 700),
+      makeEntry("afternoon-1", afternoon.toISOString(), 100),
+      makeEntry("afternoon-2", afternoon.toISOString(), 100),
+      makeEntry("afternoon-3", afternoon.toISOString(), 100),
+    ];
+    const aggregates = deriveAggregates(entries);
+    const summary = {
+      date: dateKey,
+      ...aggregates,
+      goalMl: 2_000,
+      goodThresholdMl: 1_200,
+      entries,
+    };
+
+    const distribution = getHourlyVolumeDistribution(summary);
+
+    expect(distribution.estimated).toBe(false);
+    expect(distribution.volumes[morning.getHours()]).toBe(700);
+    expect(distribution.volumes[afternoon.getHours()]).toBe(300);
+    expect(getDayContextSummary(summary)).toBe(
+      "Most of your intake happened in the morning."
+    );
+  });
+
+  it("marks proportional volume from summary-only tap counts as estimated", () => {
+    const logHours = Array<number>(24).fill(0);
+    logHours[8] = 1;
+    logHours[13] = 3;
+
+    const distribution = getHourlyVolumeDistribution({
+      date: dateKey,
+      totalMl: 800,
+      goalMl: 2_000,
+      goodThresholdMl: 1_200,
+      logHours,
+    });
+
+    expect(distribution.estimated).toBe(true);
+    expect(distribution.volumes[8]).toBe(200);
+    expect(distribution.volumes[13]).toBe(600);
   });
 });
 

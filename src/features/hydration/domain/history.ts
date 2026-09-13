@@ -413,6 +413,39 @@ export const computeBestHours = (history: HydrationHistory, now: Date, days = 30
   return ranked;
 };
 
+export type HourlyVolumeDistribution = {
+  volumes: number[];
+  estimated: boolean;
+};
+
+/**
+ * Returns millilitres by local hour. Recent entry-backed days are exact;
+ * summary-only days distribute their known total proportionally across the
+ * recorded tap counts and are explicitly marked as estimated.
+ */
+export const getHourlyVolumeDistribution = (
+  summary: HydrationDaySummary
+): HourlyVolumeDistribution => {
+  const volumes = Array.from({ length: 24 }, () => 0);
+
+  if (summary.entries && summary.entries.length > 0) {
+    for (const entry of summary.entries) {
+      const hour = new Date(entry.timestamp).getHours();
+      volumes[hour] += entry.amountMl;
+    }
+    return { volumes, estimated: false };
+  }
+
+  const totalTaps = summary.logHours.reduce((total, taps) => total + taps, 0);
+  if (totalTaps > 0) {
+    summary.logHours.forEach((taps, hour) => {
+      volumes[hour] = (taps / totalTaps) * summary.totalMl;
+    });
+  }
+
+  return { volumes, estimated: true };
+};
+
 // ---------------------------------------------------------------------------
 // §7.2 — computeBestHoursByVolume
 // Ranks hours by total ml consumed (not tap count). Uses exact entry data
@@ -427,21 +460,10 @@ export const computeBestHoursByVolume = (history: HydrationHistory, now: Date, d
     const entry = history[key];
     if (!entry) continue;
 
-    if (entry.entries && entry.entries.length > 0) {
-      // Exact per-entry volume
-      for (const e of entry.entries) {
-        const hour = new Date(e.timestamp).getHours();
-        volumes[hour] += e.amountMl;
-      }
-    } else {
-      // Fallback: distribute totalMl proportionally across logHours
-      const totalTaps = entry.logHours.reduce((a, b) => a + b, 0);
-      if (totalTaps > 0) {
-        entry.logHours.forEach((taps, h) => {
-          volumes[h] += (taps / totalTaps) * entry.totalMl;
-        });
-      }
-    }
+    const distribution = getHourlyVolumeDistribution(entry);
+    distribution.volumes.forEach((volume, hour) => {
+      volumes[hour] += volume;
+    });
   }
 
   const ranked = volumes
@@ -565,7 +587,8 @@ export const getDayContextSummary = (summary: HydrationDaySummary): string | nul
   let evening = 0; // 5 PM - 11 PM
   let night = 0; // 12 AM - 4 AM
 
-  summary.logHours.forEach((ml, hr) => {
+  const { volumes } = getHourlyVolumeDistribution(summary);
+  volumes.forEach((ml, hr) => {
     if (hr >= 5 && hr < 12) morning += ml;
     else if (hr >= 12 && hr < 17) afternoon += ml;
     else if (hr >= 17 && hr < 24) evening += ml;

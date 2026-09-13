@@ -37,6 +37,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 
 // ── Import after mocks ─────────────────────────────────────────────────────────
 import { Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { importBackup, processBackupUri } from "../backup/import";
 import { useHydrationStore } from "../state/hydrationStore";
@@ -314,6 +315,25 @@ describe("importBackup", () => {
     await importBackup();
 
     expect(notifier.rescheduleNotifications).toHaveBeenCalledOnce();
+  });
+
+  it("reports failure and restores the prior state when persistence fails", async () => {
+    vi.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue(PICKED_RESULT as any);
+    mockText.mockResolvedValue(VALID_BACKUP_JSON);
+    mockAlertConfirm(true);
+    vi.mocked(AsyncStorage.setItem).mockRejectedValueOnce(
+      new Error("disk full")
+    );
+
+    await importBackup();
+
+    const state = useHydrationStore.getState();
+    expect(state.settings.targetLiters).toBe(INITIAL_STATE.settings.targetLiters);
+    expect(state.progress).toEqual(INITIAL_STATE.progress);
+    expect(state.history).toEqual(INITIAL_STATE.history);
+    expect(vi.mocked(Alert.alert).mock.calls.some(([title]) => title === "Import failed")).toBe(true);
+    expect(vi.mocked(Alert.alert).mock.calls.some(([title]) => title === "Backup restored")).toBe(false);
+    expect(notifier.rescheduleNotifications).not.toHaveBeenCalled();
   });
 
   it("does not call rescheduleNotifications if user cancels confirmation", async () => {

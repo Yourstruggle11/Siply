@@ -1,7 +1,10 @@
 import { Alert } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import { useHydrationStore } from "../state/hydrationStore";
+import {
+  useHydrationStore,
+  waitForHydrationPersistence,
+} from "../state/hydrationStore";
 import {
   normalizeProgress,
   normalizeQuickLog,
@@ -38,7 +41,7 @@ function formatExportedAt(isoString: string): string {
  *   6. Compute merge preview (new days, updated days).
  *   7. Confirmation dialog.
  *   8. Merge history (mergeHistory).
- *   9. Apply to Zustand store via setState.
+ *   9. Apply to Zustand store and await its persisted write.
  *  10. Success feedback + rescheduleNotifications.
  *
  * ANY failure before step 9 returns without modifying state.
@@ -123,7 +126,8 @@ export async function processBackupUri(
   const normHistory = normalizeHistory(backup.history);
 
   // ── Step 6: Compute merge preview ─────────────────────────────────────────
-  const currentHistory = useHydrationStore.getState().history;
+  const previousState = useHydrationStore.getState();
+  const currentHistory = previousState.history;
   let newDays = 0;
   let updatedDays = 0;
 
@@ -169,7 +173,6 @@ export async function processBackupUri(
   const mergedHistory = mergeHistory(currentHistory, normHistory);
 
   // ── Step 9: Apply to Zustand store ────────────────────────────────────────
-  // Zustand persist auto-writes to AsyncStorage on next tick.
   useHydrationStore.setState({
     settings: normSettings,
     progress: normProgress,
@@ -177,6 +180,30 @@ export async function processBackupUri(
     history: mergedHistory,
     onboarding: { completed: true },
   });
+
+  try {
+    await waitForHydrationPersistence();
+  } catch {
+    // Restore the in-memory state as well. The failed imported write did not
+    // replace the previous persisted value, and this keeps both views aligned.
+    useHydrationStore.setState({
+      settings: previousState.settings,
+      progress: previousState.progress,
+      quickLog: previousState.quickLog,
+      history: previousState.history,
+      onboarding: previousState.onboarding,
+    });
+    try {
+      await waitForHydrationPersistence();
+    } catch {
+      // The original persisted value is still the safest available state.
+    }
+    Alert.alert(
+      "Import failed",
+      "The backup could not be saved. Your existing data was restored."
+    );
+    return;
+  }
 
   // ── Step 10: Success feedback + reschedule ────────────────────────────────
   Alert.alert(

@@ -70,6 +70,26 @@ export type HydrationStore = HydrationState & HydrationActions;
 
 export const HYDRATION_STORE_STORAGE_KEY = "siply:hydration_store:v1";
 
+let latestHydrationPersistenceWrite: Promise<void> = Promise.resolve();
+
+const trackedHydrationStorage = {
+  getItem: (name: string) => AsyncStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    const write = AsyncStorage.setItem(name, value);
+    latestHydrationPersistenceWrite = write;
+    return write;
+  },
+  removeItem: (name: string) => {
+    const removal = AsyncStorage.removeItem(name);
+    latestHydrationPersistenceWrite = removal;
+    return removal;
+  },
+};
+
+/** Wait for the most recent Zustand persistence operation to settle. */
+export const waitForHydrationPersistence = () =>
+  latestHydrationPersistenceWrite;
+
 // ---------------------------------------------------------------------------
 // §3.3 — migrateStorage with version-gated pattern
 // ---------------------------------------------------------------------------
@@ -307,7 +327,7 @@ export const useHydrationStore = create<HydrationStore>()(
     }),
     {
       name: HYDRATION_STORE_STORAGE_KEY,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => trackedHydrationStorage),
       version: SCHEMA_VERSION,
       migrate: migrateStorage,
       onRehydrateStorage: () => (state) => {

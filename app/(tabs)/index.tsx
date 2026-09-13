@@ -269,8 +269,11 @@ export default function HomeScreen() {
                   />
                   <Text
                     style={[
+                      styles.presetName,
                       { color: isActive ? theme.colors.accent : theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600" },
                     ]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
                   >
                     {typeof preset === "object" && preset.name ? preset.name : `${amount}`}
                   </Text>
@@ -403,7 +406,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    marginHorizontal: 16,
     padding: 16,
   },
   quickLogRow: {
@@ -412,13 +414,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   presetButton: {
+    flexBasis: 100,
+    flexGrow: 1,
+    minWidth: 0,
     borderWidth: 1,
-    borderRadius: 999, // pill
+    borderRadius: 16,
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44, // touch target
+  },
+  presetName: {
+    width: "100%",
+    textAlign: "center",
   },
   statRow: {
     flexDirection: "row",

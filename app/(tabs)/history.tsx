@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Share, StyleSheet, Text, View, Pressable } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { Screen } from "../../src/shared/components/Screen";
@@ -26,6 +25,7 @@ import {
   getSummaryForDate,
   computeSmartInsight,
   getDayContextSummary,
+  getHourlyVolumeDistribution,
 } from "../../src/features/hydration/domain/history";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -118,6 +118,11 @@ export default function HistoryScreen() {
     return getDayContextSummary(selectedSummary);
   }, [selectedSummary]);
 
+  const hourlyDistribution = useMemo(
+    () => (selectedSummary ? getHourlyVolumeDistribution(selectedSummary) : null),
+    [selectedSummary]
+  );
+
   useEffect(() => {
     if (!shareEnabled) {
       setShareReady(false);
@@ -194,6 +199,7 @@ export default function HistoryScreen() {
 
   const handleSelectDate = (dateKey: string) => {
     void Haptics.selectionAsync();
+    setSelectedHour(null);
     setSelectedDate(dateKey);
   };
 
@@ -375,11 +381,10 @@ export default function HistoryScreen() {
             </View>
 
             <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary }]}>
-              Hourly Distribution ({selectedSummary.logHours.reduce((a, b) => a + b, 0)} logs)
+              Hourly intake{hourlyDistribution?.estimated ? " (estimated)" : ""} ({selectedSummary.logHours.reduce((a, b) => a + b, 0)} logs)
             </Text>
-            <HourlyBarChart 
-              logHours={selectedSummary.logHours} 
-              goalMl={selectedSummary.goalMl} 
+            <HourlyBarChart
+              hourlyVolumes={hourlyDistribution?.volumes ?? []}
               selectedHour={selectedHour}
               onSelectHour={setSelectedHour}
             />
@@ -408,7 +413,7 @@ export default function HistoryScreen() {
                 }
 
                 return (
-                  <View style={[styles.entryListSection, { flexShrink: 1 }]}>
+                  <View style={styles.entryListSection}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
                       <Text style={[styles.sheetChartTitle, { color: theme.colors.textSecondary, margin: 0 }]}>
                         Log Entries {selectedHour !== null ? `(${formatHour(selectedHour)})` : ''}
@@ -419,10 +424,7 @@ export default function HistoryScreen() {
                         </Pressable>
                       )}
                     </View>
-                    <ScrollView 
-                      style={{ maxHeight: 200, marginTop: 8 }} 
-                      showsVerticalScrollIndicator={false}
-                    >
+                    <View style={styles.entryList}>
                       {sorted.map((entry) => (
                         <Swipeable
                           key={entry.id}
@@ -450,7 +452,7 @@ export default function HistoryScreen() {
                           No logs for this hour.
                         </Text>
                       )}
-                    </ScrollView>
+                    </View>
                   </View>
                 );
               }
@@ -553,6 +555,10 @@ const styles = StyleSheet.create({
   },
   entryListSection: {
     marginTop: 4,
+  },
+  entryList: {
+    marginTop: 8,
+    paddingBottom: 8,
   },
   entryRow: {
     flexDirection: "row",

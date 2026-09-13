@@ -5,7 +5,6 @@ import { ActivityIndicator, StyleSheet, View, useColorScheme, Platform, Alert } 
 import * as Linking from "expo-linking";
 import { handleIncomingBackupUrl } from "../src/features/hydration/backup/incoming";
 import * as Notifications from "expo-notifications";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { ThemeProvider } from "../src/shared/theme/ThemeProvider";
@@ -22,41 +21,18 @@ import {
 } from "../src/features/hydration/notifications/notifier";
 import { registerBackgroundFetchAsync } from "../src/features/hydration/notifications/backgroundTask";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
+import { useDayRollover } from "../src/shared/hooks/useDayRollover";
 import {
   NOTIFICATION_ACTION_LOG,
   NOTIFICATION_ACTION_SNOOZE,
   NOTIFICATION_ACTION_SKIP,
+  NOTIFICATION_ACTION_VIEW_HISTORY,
 } from "../src/core/constants";
 import { ensureFirstLaunchAt } from "../src/core/storage/storage";
+import { notificationActionDeduplicator } from "../src/features/hydration/notifications/actionDedup";
 import { darkColors, lightColors } from "../src/shared/theme/tokens";
 import { useTheme } from "../src/shared/theme/ThemeProvider";
 void SplashScreen.preventAutoHideAsync().catch(() => {});
-
-const HANDLED_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
-const DEDUP_STORAGE_KEY = "siply:handled_notification_ids:v1";
-let handledNotificationActions = new Map<string, number>();
-
-const loadDedupMap = async () => {
-  try {
-    const data = await AsyncStorage.getItem(DEDUP_STORAGE_KEY);
-    if (data) {
-      const parsed = JSON.parse(data) as [string, number][];
-      handledNotificationActions = new Map(parsed);
-    }
-  } catch (err) {
-    console.error("Siply: Failed to load dedup map", err);
-  }
-};
-void loadDedupMap();
-
-const persistDedupMap = async () => {
-  try {
-    const entries = Array.from(handledNotificationActions.entries());
-    await AsyncStorage.setItem(DEDUP_STORAGE_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.error("Siply: Failed to persist dedup map", err);
-  }
-};
 
 const parseMlFromBody = (body?: string | null) => {
   if (!body) {
@@ -68,27 +44,6 @@ const parseMlFromBody = (body?: string | null) => {
   }
   const value = Number.parseInt(match[1], 10);
   return Number.isFinite(value) ? value : undefined;
-};
-
-const markNotificationHandled = (notificationId: string) => {
-  const now = Date.now();
-  handledNotificationActions.set(notificationId, now);
-  let changed = false;
-
-  if (handledNotificationActions.size > 50) {
-    for (const [id, timestamp] of handledNotificationActions) {
-      if (now - timestamp > HANDLED_ACTION_TTL_MS) {
-        handledNotificationActions.delete(id);
-        changed = true;
-      }
-    }
-  } else {
-    changed = true;
-  }
-
-  if (changed) {
-    void persistDedupMap();
-  }
 };
 
 const RootLayoutNav = () => {
@@ -103,6 +58,8 @@ const RootLayoutNav = () => {
   const refreshProgressDate = useHydrationStore((s) => s.refreshProgressDate);
   const addConsumed = useHydrationStore((s) => s.addConsumed);
   const [routeReady, setRouteReady] = useState(false);
+
+  useDayRollover(refreshProgressDate);
 
   const expectedRoot = useMemo(
     () => (onboarding.completed ? "(tabs)" : "(onboarding)"),
@@ -189,6 +146,7 @@ const RootLayoutNav = () => {
     hydrated,
     onboarding.completed,
     settings,
+    progress.date,
     progress.consumedMl,
     quickLog.lastLogAt,
     ensureNotificationPermission,
@@ -202,28 +160,29 @@ const RootLayoutNav = () => {
   }, [hydrated, onboarding.completed, ensureNotificationPermission]);
 
   const processNotificationResponse = React.useCallback(
-    (response: Notifications.NotificationResponse) => {
+    async (response: Notifications.NotificationResponse) => {
       const action = response.actionIdentifier;
       const notificationId = response.notification.request.identifier;
 
-      if (action === NOTIFICATION_ACTION_SKIP) {
-        if (notificationId) {
-          if (!handledNotificationActions.has(notificationId)) {
-            markNotificationHandled(notificationId);
-          }
-          void Notifications.dismissNotificationAsync(notificationId);
+      const claimNotification = async () => {
+        if (!notificationId) {
+          return true;
         }
+        const isNew = await notificationActionDeduplicator.claimIfUnhandled(
+          notificationId
+        );
+        void Notifications.dismissNotificationAsync(notificationId);
+        return isNew;
+      };
+
+      if (action === NOTIFICATION_ACTION_SKIP) {
+        await claimNotification();
         return;
       }
 
       if (action === NOTIFICATION_ACTION_SNOOZE) {
-        if (notificationId) {
-          if (handledNotificationActions.has(notificationId)) {
-            void Notifications.dismissNotificationAsync(notificationId);
-            return;
-          }
-          markNotificationHandled(notificationId);
-          void Notifications.dismissNotificationAsync(notificationId);
+        if (!(await claimNotification())) {
+          return;
         }
         const meta = parseSiplyNotificationId(notificationId);
         const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
@@ -233,17 +192,19 @@ const RootLayoutNav = () => {
         return;
       }
 
+      if (action === NOTIFICATION_ACTION_VIEW_HISTORY) {
+        if (await claimNotification()) {
+          router.push("/(tabs)/history");
+        }
+        return;
+      }
+
       if (action !== NOTIFICATION_ACTION_LOG) {
         return;
       }
-      
-      if (notificationId) {
-        if (handledNotificationActions.has(notificationId)) {
-          void Notifications.dismissNotificationAsync(notificationId);
-          return;
-        }
-        markNotificationHandled(notificationId);
-        void Notifications.dismissNotificationAsync(notificationId);
+
+      if (!(await claimNotification())) {
+        return;
       }
       const meta = parseSiplyNotificationId(notificationId);
       const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
@@ -251,19 +212,19 @@ const RootLayoutNav = () => {
         void addConsumed(amount);
       }
     },
-    [addConsumed, settings]
+    [addConsumed, router, settings]
   );
 
   const lastResponse = Notifications.useLastNotificationResponse();
   useEffect(() => {
     if (lastResponse) {
-      processNotificationResponse(lastResponse);
+      void processNotificationResponse(lastResponse);
     }
   }, [lastResponse, processNotificationResponse]);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(
-      processNotificationResponse
+      (response) => void processNotificationResponse(response)
     );
     return () => subscription.remove();
   }, [processNotificationResponse]);
