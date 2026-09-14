@@ -12,9 +12,10 @@ type HourlyBarChartProps = {
 export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHour }: HourlyBarChartProps) => {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
-  const height = 140;
+  const height = 156;
+  const paddingTop = 28;
   const paddingBottom = 24;
-  const chartHeight = height - paddingBottom;
+  const chartHeight = height - paddingTop - paddingBottom;
   
   const hours = Array.from({ length: 24 }, (_, i) => i);
   
@@ -40,7 +41,7 @@ export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHou
               <Rect
                 key={`track-${hour}`}
                 x={x}
-                y={0}
+                y={paddingTop}
                 width={barWidth}
                 height={chartHeight}
                 rx={barWidth / 2}
@@ -57,7 +58,7 @@ export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHou
             
             const fillHeight = Math.max(barWidth, (ml / maxVolume) * chartHeight);
             const x = (barWidth + barSpacing) * hour + (barSpacing / 2);
-            const y = chartHeight - fillHeight;
+            const y = paddingTop + chartHeight - fillHeight;
 
             return (
               <Rect
@@ -82,7 +83,7 @@ export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHou
               <Rect
                 key={`touch-${hour}`}
                 x={x}
-                y={0}
+                y={paddingTop}
                 width={barWidth + barSpacing}
                 height={chartHeight}
                 fill="transparent"
@@ -98,9 +99,9 @@ export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHou
           {/* Clean Axis Line */}
           <Line
             x1={0}
-            y1={chartHeight}
+            y1={paddingTop + chartHeight}
             x2={width}
-            y2={chartHeight}
+            y2={paddingTop + chartHeight}
             stroke={theme.colors.border}
             strokeWidth={1}
           />
@@ -136,6 +137,35 @@ export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHou
               </SvgText>
             );
           })}
+
+          {selectedHour !== null && (hourlyVolumes[selectedHour] || 0) > 0 ? (
+            <>
+              <Rect
+                x={Math.max(0, Math.min(
+                  (barWidth + barSpacing) * selectedHour + (barWidth + barSpacing) / 2 - 48,
+                  width - 96
+                ))}
+                y={0}
+                width={96}
+                height={22}
+                rx={6}
+                fill={theme.colors.surfaceElevated}
+              />
+              <SvgText
+                x={Math.max(48, Math.min(
+                  (barWidth + barSpacing) * selectedHour + (barWidth + barSpacing) / 2,
+                  width - 48
+                ))}
+                y={15}
+                fill={theme.colors.textPrimary}
+                fontSize={10}
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                {`${selectedHour === 0 ? 12 : selectedHour > 12 ? selectedHour - 12 : selectedHour} ${selectedHour >= 12 ? "PM" : "AM"} · ${Math.round(hourlyVolumes[selectedHour])} ml`}
+              </SvgText>
+            </>
+          ) : null}
         </Svg>
       )}
     </View>
@@ -144,7 +174,7 @@ export const HourlyBarChart = ({ hourlyVolumes, selectedHour = null, onSelectHou
 
 const styles = StyleSheet.create({
   container: {
-    height: 140,
+    height: 156,
     marginTop: 16,
     marginBottom: 8,
     width: "100%",

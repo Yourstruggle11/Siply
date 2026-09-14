@@ -290,6 +290,33 @@ export const removeEntryFromHistory = (
 export const buildDateKeys = (today: Date, days: number) =>
   Array.from({ length: days }, (_item, index) => getDateKey(addDays(today, -(days - 1 - index))));
 
+export const computeHistoryOverview = (
+  history: HydrationHistory,
+  now: Date,
+  days: number,
+  fallbackGoalMl: number
+) => {
+  const keys = buildDateKeys(now, days);
+  const totals = keys.map((key) => history[key]?.totalMl ?? 0);
+  const trackedTotals = totals.filter((value) => value > 0);
+  const averageDailyMl = trackedTotals.length
+    ? trackedTotals.reduce((sum, value) => sum + value, 0) / trackedTotals.length
+    : 0;
+  const goalHits = keys.filter((key) => {
+    const summary = history[key];
+    const goalMl = summary?.goalMl ?? fallbackGoalMl;
+    return goalMl > 0 && (summary?.totalMl ?? 0) >= goalMl;
+  }).length;
+
+  return {
+    keys,
+    totals,
+    trackedDays: trackedTotals.length,
+    averageDailyMl,
+    goalHitRatePercent: keys.length ? Math.round((goalHits / keys.length) * 100) : 0,
+  };
+};
+
 export const getSummaryForDate = (
   history: HydrationHistory,
   dateKey: string,

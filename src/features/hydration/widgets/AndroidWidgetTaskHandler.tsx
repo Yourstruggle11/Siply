@@ -1,33 +1,32 @@
 import { registerWidgetTaskHandler, requestWidgetUpdate } from 'react-native-android-widget';
 import { SiplyCircularWidget } from './SiplyCircularWidget';
 import { SiplyLinearWidget } from './SiplyLinearWidget';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
+import { DEFAULT_SETTINGS } from '../../../core/constants';
+import { getDateKey } from '../../../core/time';
+import { buildWidgetHydrationData } from './widgetData';
 
 export async function renderAndroidWidget(isLinear: boolean = false) {
-  let progress = { date: '', consumedMl: 0 };
-  let settings = { targetLiters: 3 };
+  let source = {
+    progress: { date: getDateKey(new Date()), consumedMl: 0 },
+    settings: DEFAULT_SETTINGS,
+  };
   
   try {
-    const storeData = await AsyncStorage.getItem('siply:hydration_store:v1');
-    if (storeData) {
-      const parsed = JSON.parse(storeData);
-      if (parsed.state) {
-        if (parsed.state.progress) progress = parsed.state.progress;
-        if (parsed.state.settings) settings = parsed.state.settings;
-      }
-    }
+    // Deferred to avoid the store/widget registration import cycle on Android.
+    const { readPersistedHydrationSnapshot } = require('../state/hydrationStore') as typeof import('../state/hydrationStore');
+    const snapshot = await readPersistedHydrationSnapshot();
+    if (snapshot) source = { progress: snapshot.progress, settings: snapshot.settings };
   } catch (err) {
     console.error('Failed to load widget data', err);
   }
 
-  const targetMl = Math.round(settings.targetLiters * 1000);
-  const percentage = targetMl > 0 ? Math.round((progress.consumedMl / targetMl) * 100) : 0;
+  const widgetData = buildWidgetHydrationData(source);
 
   if (isLinear) {
-    return <SiplyLinearWidget consumedMl={progress.consumedMl} targetMl={targetMl} percentage={percentage} />;
+    return <SiplyLinearWidget {...widgetData} />;
   }
-  return <SiplyCircularWidget consumedMl={progress.consumedMl} targetMl={targetMl} percentage={percentage} />;
+  return <SiplyCircularWidget {...widgetData} />;
 }
 
 export function registerAndroidWidget() {

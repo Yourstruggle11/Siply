@@ -5,9 +5,10 @@ export interface SiplyAndroidWidgetProps {
   consumedMl: number;
   targetMl: number;
   percentage: number;
+  nextReminderLabel: string;
 }
 
-export function SiplyCircularWidget({ consumedMl, targetMl, percentage }: SiplyAndroidWidgetProps) {
+export function SiplyCircularWidget({ consumedMl, targetMl, percentage, nextReminderLabel }: SiplyAndroidWidgetProps) {
   const displayPercentage = Math.min(percentage, 100);
   const radius = 60; // Slightly smaller to leave room for the glow
   const circumference = 2 * Math.PI * radius;
@@ -78,8 +79,9 @@ export function SiplyCircularWidget({ consumedMl, targetMl, percentage }: SiplyA
       <!-- Progress Text (ml) -->
       <text x="100" y="122" font-family="sans-serif" font-size="12" font-weight="600" fill="#9CA3AB" text-anchor="middle">${consumedMl} / ${targetMl} ml</text>
       
-      <!-- Title -->
-      <text x="100" y="172" font-family="sans-serif" font-size="13" font-weight="bold" fill="#E8ECF0" opacity="0.9" text-anchor="middle" letter-spacing="2">TODAY</text>
+      <!-- Next reminder -->
+      <text x="100" y="166" font-family="sans-serif" font-size="9" font-weight="bold" fill="#5BA3E0" text-anchor="middle" letter-spacing="1">NEXT REMINDER</text>
+      <text x="100" y="181" font-family="sans-serif" font-size="10" font-weight="600" fill="#E8ECF0" text-anchor="middle">${nextReminderLabel}</text>
     </svg>
   `;
 

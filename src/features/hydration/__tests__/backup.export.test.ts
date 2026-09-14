@@ -113,7 +113,7 @@ describe("exportBackup", () => {
     expect(backup.history).toEqual(SEED_STATE.history);
   });
 
-  it("does NOT include onboarding or hydrated in the backup", async () => {
+  it("does NOT include runtime state, AI preferences, caches, or credentials", async () => {
     await exportBackup();
 
     const [json] = mockWrite.mock.calls[0];
@@ -121,6 +121,9 @@ describe("exportBackup", () => {
 
     expect(backup).not.toHaveProperty("onboarding");
     expect(backup).not.toHaveProperty("hydrated");
+    expect(backup).not.toHaveProperty("aiPreferences");
+    expect(backup).not.toHaveProperty("aiInsightCache");
+    expect(backup).not.toHaveProperty("credentials");
   });
 
   it("calls shareAsync with mimeType application/json", async () => {

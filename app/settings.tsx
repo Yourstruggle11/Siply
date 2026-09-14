@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
@@ -27,6 +27,16 @@ import { exportBackup } from "../src/features/hydration/backup/export";
 import { importBackup } from "../src/features/hydration/backup/import";
 import { STORAGE_KEYS } from "../src/core/storage/keys";
 import { ensureFirstLaunchAt, getJson } from "../src/core/storage/storage";
+import { clearAiInsightCache } from "../src/features/hydration/ai/insightCache";
+import { clearAiHistoryArtifactCaches } from "../src/features/hydration/ai/historyArtifacts";
+import { useAiSettings } from "../src/features/hydration/ai/state";
+import {
+  APP_ICON_OPTIONS,
+  AppIconId,
+  getSelectedAppIcon,
+  selectAppIcon,
+  supportsAppIconSelection,
+} from "../src/shared/appIcon";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -37,11 +47,16 @@ export default function SettingsScreen() {
   const quickLog = useHydrationStore((s) => s.quickLog);
   const updateSettings = useHydrationStore((s) => s.updateSettings);
   const resetToday = useHydrationStore((s) => s.resetToday);
+  const { preferences, setAutomaticInsightsEnabled, configuredProviders } = useAiSettings();
 
   // Backup loading states
   const [backupExporting, setBackupExporting] = useState(false);
   const [backupImporting, setBackupImporting] = useState(false);
   const [showBackupReminder, setShowBackupReminder] = useState(false);
+  const [aiCacheStatus, setAiCacheStatus] = useState<string | null>(null);
+  const [selectedAppIcon, setSelectedAppIcon] = useState<AppIconId>(() => getSelectedAppIcon());
+  const [changingAppIcon, setChangingAppIcon] = useState<AppIconId | null>(null);
+  const [appIconError, setAppIconError] = useState<string | null>(null);
 
   const { permission, requestPermission, openSettings } = useNotificationPermission();
   const [diagnostics, setDiagnostics] = useState<NotificationDiagnosticsState | null>(null);
@@ -52,6 +67,21 @@ export default function SettingsScreen() {
   const [channels, setChannels] = useState<Notifications.NotificationChannel[] | null>(null);
   const [scheduledCount, setScheduledCount] = useState(0);
   const [scheduledNext, setScheduledNext] = useState<string[]>([]);
+
+  const handleAppIconChange = async (icon: AppIconId) => {
+    if (!supportsAppIconSelection || changingAppIcon || selectedAppIcon === icon) return;
+
+    setChangingAppIcon(icon);
+    setAppIconError(null);
+    try {
+      const appliedIcon = await selectAppIcon(icon);
+      setSelectedAppIcon(appliedIcon);
+    } catch {
+      setAppIconError("Siply couldn't change the app icon. Please try again.");
+    } finally {
+      setChangingAppIcon(null);
+    }
+  };
 
   const handleExportBackup = async () => {
     if (backupExporting) return;
@@ -238,6 +268,55 @@ export default function SettingsScreen() {
               </Pressable>
             ))}
           </View>
+          <View style={styles.appIconGroup}>
+            <View style={styles.appIconHeading}>
+              <Text style={[styles.appIconTitle, { color: theme.colors.textPrimary }]}>App icon</Text>
+              {changingAppIcon ? (
+                <Text style={[styles.appIconStatus, { color: theme.colors.textSecondary }]}>Changing…</Text>
+              ) : null}
+            </View>
+            <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Choose how Siply appears on this device.</Text>
+            <View style={styles.appIconOptions}>
+              {APP_ICON_OPTIONS.map((option) => {
+                const selected = selectedAppIcon === option.id;
+                const changing = changingAppIcon === option.id;
+
+                return (
+                  <Pressable
+                    key={option.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${option.label} app icon`}
+                    accessibilityState={{ selected, disabled: !supportsAppIconSelection || Boolean(changingAppIcon) }}
+                    disabled={!supportsAppIconSelection || Boolean(changingAppIcon)}
+                    onPress={() => void handleAppIconChange(option.id)}
+                    style={({ pressed }) => [
+                      styles.appIconOption,
+                      {
+                        borderColor: selected ? theme.colors.accent : theme.colors.border,
+                        backgroundColor: selected ? theme.colors.accentSoft : theme.colors.surface,
+                        opacity: pressed || changing ? 0.72 : 1,
+                      },
+                    ]}
+                  >
+                    <Image source={option.preview} style={styles.appIconPreview} />
+                    <View style={styles.appIconCopy}>
+                      <Text style={[styles.appIconLabel, { color: theme.colors.textPrimary }]}>{option.label}</Text>
+                      <Text style={[styles.appIconDescription, { color: theme.colors.textSecondary }]}>{option.description}</Text>
+                    </View>
+                    <MaterialIcons
+                      name={selected ? "radio-button-checked" : "radio-button-unchecked"}
+                      size={22}
+                      color={selected ? theme.colors.accent : theme.colors.textSecondary}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+            {!supportsAppIconSelection ? (
+              <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Icon selection will be available in the next installed Android or iOS build.</Text>
+            ) : null}
+            {appIconError ? <Text style={[styles.helper, { color: theme.colors.warning }]}>{appIconError}</Text> : null}
+          </View>
         </AnimatedCard>
 
         <AnimatedCard style={styles.section} delay={180}>
@@ -292,6 +371,26 @@ export default function SettingsScreen() {
           ) : null}
         </AnimatedCard>
 
+        <AnimatedCard style={styles.section} delay={200}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Optional AI</Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+            Bring your own provider key. Requests go directly from this device to your selected provider; Siply has no AI server.
+          </Text>
+          <ToggleRow
+            label="Automatic AI insights"
+            helper="Adds optional AI annotations, daily recaps, and weekly reviews in History. Local insights always keep working."
+            value={preferences.automaticInsightsEnabled}
+            onValueChange={(value) => void setAutomaticInsightsEnabled(value)}
+          />
+          <View style={styles.actionGroup}>
+            <Button
+              label={configuredProviders.length ? "Manage AI providers" : "Connect an AI provider"}
+              onPress={() => router.push("/ai-settings")}
+            />
+            <Button label="Ask Siply" variant="secondary" onPress={() => router.push("/ask-siply")} />
+          </View>
+        </AnimatedCard>
+
         <AnimatedCard style={styles.section} delay={220}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Data backup</Text>
           {showBackupReminder ? (
@@ -319,7 +418,31 @@ export default function SettingsScreen() {
               onPress={handleImportBackup}
               disabled={backupExporting || backupImporting}
             />
+            <Button
+              label="Delete saved AI insights"
+              variant="secondary"
+              onPress={() => {
+                Alert.alert(
+                  "Delete saved AI insights?",
+                  "This removes cached AI annotations, daily recaps, and weekly reviews. Provider keys and hydration data will not be changed.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: () => {
+                        void Promise.all([
+                          clearAiInsightCache(),
+                          clearAiHistoryArtifactCaches(),
+                        ]).then(() => setAiCacheStatus("Saved AI insights deleted."));
+                      },
+                    },
+                  ]
+                );
+              }}
+            />
           </View>
+          {aiCacheStatus ? <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>{aiCacheStatus}</Text> : null}
         </AnimatedCard>
 
         <AnimatedCard style={styles.section} delay={260}>
@@ -452,6 +575,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textTransform: "capitalize",
     fontWeight: "500",
+  },
+  appIconGroup: {
+    gap: 10,
+    marginTop: 4,
+  },
+  appIconHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  appIconTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  appIconStatus: {
+    fontSize: 12,
+  },
+  appIconOptions: {
+    gap: 8,
+  },
+  appIconOption: {
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  appIconPreview: {
+    width: 54,
+    height: 54,
+    borderRadius: 13,
+  },
+  appIconCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  appIconLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  appIconDescription: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   actionGroup: {
     gap: 10,

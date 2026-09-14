@@ -32,6 +32,8 @@ import { ensureFirstLaunchAt } from "../src/core/storage/storage";
 import { notificationActionDeduplicator } from "../src/features/hydration/notifications/actionDedup";
 import { darkColors, lightColors } from "../src/shared/theme/tokens";
 import { useTheme } from "../src/shared/theme/ThemeProvider";
+import { NetworkStatusProvider } from "../src/shared/network/NetworkStatusProvider";
+import { AiSettingsProvider } from "../src/features/hydration/ai/state";
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const parseMlFromBody = (body?: string | null) => {
@@ -126,8 +128,11 @@ const RootLayoutNav = () => {
       return;
     }
     if (rootSegment !== expectedRoot) {
-      if (expectedRoot === "(tabs)" && rootSegment === "settings") {
-        // allow /settings if onboarding is complete
+      if (
+        expectedRoot === "(tabs)" &&
+        ["settings", "ask-siply", "ai-settings"].includes(String(rootSegment))
+      ) {
+        // Allow non-tab app screens after onboarding is complete.
       } else {
         setRouteReady(false);
         router.replace(expectedRoot === "(tabs)" ? "/(tabs)" : "/(onboarding)");
@@ -279,8 +284,12 @@ const AppShell = () => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider mode={settings.appearanceMode}>
-          <StatusBar style={statusBarStyle} backgroundColor={statusBarBackground} />
-          <RootLayoutNav />
+          <NetworkStatusProvider>
+            <AiSettingsProvider>
+              <StatusBar style={statusBarStyle} backgroundColor={statusBarBackground} />
+              <RootLayoutNav />
+            </AiSettingsProvider>
+          </NetworkStatusProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -6,6 +6,7 @@ export function SiplyLinearWidget({
   consumedMl,
   targetMl,
   percentage,
+  nextReminderLabel,
 }: SiplyAndroidWidgetProps) {
   const progress = Math.max(0, Math.min(percentage, 100));
   const consumed = Math.max(0, consumedMl);
@@ -31,6 +32,10 @@ export function SiplyLinearWidget({
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#1A2A3A"/>
+          <stop offset="100%" stop-color="#0C0F12"/>
+        </linearGradient>
         <linearGradient
           id="water"
           x1="0"
@@ -41,17 +46,16 @@ export function SiplyLinearWidget({
           <stop offset="0%" stop-color="#5BA3E0"/>
           <stop offset="100%" stop-color="#2D7BBE"/>
         </linearGradient>
-        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.25" />
-        </filter>
       </defs>
 
       <rect
         width="320"
         height="180"
         rx="28"
-        fill="#0F1113"
+        fill="url(#bgGrad)"
       />
+
+      <circle cx="292" cy="-8" r="66" fill="#5BA3E0" opacity="0.055" />
 
       <text
         x="28"
@@ -62,26 +66,25 @@ export function SiplyLinearWidget({
         fill="#9CA3AB"
         letter-spacing="1"
       >
-        SIPLY
+        TODAY'S HYDRATION
       </text>
 
       <text
         x="292"
         y="36"
         font-family="sans-serif"
-        font-size="11"
+        font-size="10"
         font-weight="bold"
         fill="#9CA3AB"
         text-anchor="end"
-        letter-spacing="0.5"
+        letter-spacing="0.2"
       >
-        TODAY
+        NEXT  ${nextReminderLabel}
       </text>
 
       <path
         d="M 42 63 C 42 63, 31 77, 31 84 C 31 91, 36 96, 42 96 C 48 96, 53 91, 53 84 C 53 77, 42 63, 42 63 Z"
         fill="url(#water)"
-        filter="url(#glow)"
       />
 
       <text
@@ -132,6 +135,15 @@ export function SiplyLinearWidget({
           ? `
       <rect
         x="28"
+        y="127"
+        width="${Math.max(filledWidth, 12)}"
+        height="18"
+        rx="9"
+        fill="url(#water)"
+        opacity="0.25"
+      />
+      <rect
+        x="28"
         y="130"
         width="${Math.max(filledWidth, 12)}"
         height="${progressHeight}"
@@ -173,7 +185,7 @@ export function SiplyLinearWidget({
       style={{
         width: 'match_parent',
         height: 'match_parent',
-        backgroundColor: '#0F1113',
+        backgroundColor: '#0C0F12',
         borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',

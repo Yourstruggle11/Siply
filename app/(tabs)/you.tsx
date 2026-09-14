@@ -169,6 +169,23 @@ export default function YouScreen() {
           </AnimatedCard>
         ) : null}
 
+        <Pressable
+          onPress={() => router.push("/ask-siply")}
+          accessibilityRole="button"
+          accessibilityLabel="Open Ask Siply"
+        >
+          <AnimatedCard style={styles.aiEntry} delay={80}>
+            <View style={[styles.aiEntryIcon, { backgroundColor: theme.colors.accentSoft }]}>
+              <MaterialCommunityIcons name="creation" size={24} color={theme.colors.accent} />
+            </View>
+            <View style={styles.aiEntryText}>
+              <Text style={[styles.aiEntryTitle, { color: theme.colors.textPrimary }]}>Ask Siply</Text>
+              <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Ask optional AI questions grounded in your local hydration history.</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={25} color={theme.colors.textSecondary} />
+          </AnimatedCard>
+        </Pressable>
+
         <AnimatedCard style={styles.section} delay={100}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily target & Units</Text>
           <Field
@@ -557,6 +574,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     width: "100%",
+  },
+  aiEntry: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  aiEntryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiEntryText: {
+    flex: 1,
+    gap: 3,
+  },
+  aiEntryTitle: {
+    fontSize: 17,
+    fontWeight: "600",
   },
   iconButton: {
     flex: 1,

@@ -17,6 +17,12 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
   const [width, setWidth] = useState(0);
   const [cursorIndex, setCursorIndex] = useState<number | null>(null);
   const theme = useTheme();
+  const horizontalInset = 6;
+  const topInset = 6;
+  const bottomInset = 4;
+  const plotWidth = Math.max(0, width - horizontalInset * 2);
+  const plotBottom = height - bottomInset;
+  const plotHeight = Math.max(1, plotBottom - topInset);
   
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
@@ -25,27 +31,26 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
   const pathAndBars = useMemo(() => {
     if (width === 0 || data.length === 0) return { path: '', bars: [], points: [] };
     
-    // For line chart, distribute points across the full width
-    const xStep = data.length > 1 ? width / (data.length - 1) : width;
-    const scaleY = (val: number) => height - (val / maxVal) * height;
+    const xStep = data.length > 1 ? plotWidth / (data.length - 1) : plotWidth;
+    const scaleY = (val: number) => plotBottom - (val / maxVal) * plotHeight;
 
     let pathStr = '';
     const bars: {x: number, y: number, w: number, h: number, val: number}[] = [];
     const points: {x: number, y: number, val: number}[] = [];
 
     // For bar chart, calculate individual bar width and spacing
-    const barWidth = Math.max(1, (width / data.length) * 0.7);
-    const cellWidth = width / data.length;
+    const barWidth = Math.max(1, (plotWidth / data.length) * 0.7);
+    const cellWidth = plotWidth / data.length;
 
     data.forEach((val, i) => {
       // Line chart coords
-      const xLine = i * xStep;
+      const xLine = horizontalInset + i * xStep;
       const y = scaleY(val);
 
       if (i === 0) {
         pathStr += `M ${xLine} ${y} `;
       } else {
-        const prevX = (i - 1) * xStep;
+        const prevX = horizontalInset + (i - 1) * xStep;
         const prevY = scaleY(data[i - 1]);
         const cp1x = prevX + xStep / 2;
         const cp1y = prevY;
@@ -58,18 +63,18 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
 
       // Bar chart coords
       bars.push({
-        x: (i * cellWidth) + (cellWidth - barWidth) / 2,
+        x: horizontalInset + (i * cellWidth) + (cellWidth - barWidth) / 2,
         y,
         w: barWidth,
-        h: height - y,
+        h: plotBottom - y,
         val
       });
     });
 
     return { path: pathStr, bars, points };
-  }, [width, data, height, maxVal]);
+  }, [bottomInset, data, height, horizontalInset, maxVal, plotBottom, plotHeight, plotWidth]);
 
-  const goalY = goalMl ? height - (goalMl / maxVal) * height : -1;
+  const goalY = goalMl ? plotBottom - (goalMl / maxVal) * plotHeight : -1;
 
   const handleTouch = (e: any) => {
     if (width === 0 || data.length === 0) return;
@@ -77,20 +82,33 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
     let index = 0;
     
     if (type === 'bar') {
-      const cellWidth = width / data.length;
-      index = Math.floor(x / cellWidth);
+      const cellWidth = plotWidth / data.length;
+      index = Math.floor((x - horizontalInset) / cellWidth);
     } else {
-      const xStep = data.length > 1 ? width / (data.length - 1) : width;
-      index = Math.round(x / xStep);
+      const xStep = data.length > 1 ? plotWidth / (data.length - 1) : plotWidth;
+      index = Math.round((x - horizontalInset) / xStep);
     }
     
     index = Math.max(0, Math.min(index, data.length - 1));
     setCursorIndex(index);
   };
 
-  const handleTouchEnd = () => {
-    setCursorIndex(null);
-  };
+  const selectedX = cursorIndex === null
+    ? 0
+    : type === 'line'
+      ? pathAndBars.points[cursorIndex]?.x ?? 0
+      : (pathAndBars.bars[cursorIndex]?.x ?? 0) + (pathAndBars.bars[cursorIndex]?.w ?? 0) / 2;
+  const selectedY = cursorIndex === null
+    ? 0
+    : type === 'line'
+      ? pathAndBars.points[cursorIndex]?.y ?? 0
+      : pathAndBars.bars[cursorIndex]?.y ?? 0;
+  const tooltipWidth = 104;
+  const tooltipHeight = labels ? 42 : 30;
+  const tooltipX = Math.max(0, Math.min(selectedX - tooltipWidth / 2, width - tooltipWidth));
+  const tooltipY = selectedY < tooltipHeight + 12
+    ? Math.max(4, height - tooltipHeight - 6)
+    : 4;
 
   return (
     <View 
@@ -99,8 +117,7 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
       onStartShouldSetResponder={() => true}
       onResponderGrant={handleTouch}
       onResponderMove={handleTouch}
-      onResponderRelease={handleTouchEnd}
-      onResponderTerminate={handleTouchEnd}
+      onResponderTerminate={() => setCursorIndex(null)}
     >
       {width > 0 && (
         <Svg width={width} height={height}>
@@ -113,7 +130,7 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
           
           {goalMl && goalY >= 0 && (
             <Path 
-              d={`M 0 ${goalY} L ${width} ${goalY}`} 
+              d={`M ${horizontalInset} ${goalY} L ${width - horizontalInset} ${goalY}`}
               stroke={theme.colors.textSecondary} 
               strokeWidth="1" 
               strokeDasharray="4,4" 
@@ -124,7 +141,7 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
           {type === "line" && pathAndBars.path !== '' && (
             <>
               <Path
-                d={`${pathAndBars.path} L ${width} ${height} L 0 ${height} Z`}
+                d={`${pathAndBars.path} L ${width - horizontalInset} ${plotBottom} L ${horizontalInset} ${plotBottom} Z`}
                 fill="url(#grad)"
               />
               <Path
@@ -157,7 +174,7 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
               {type === 'line' && (
                 <>
                   <Path
-                    d={`M ${pathAndBars.points[cursorIndex].x} 0 L ${pathAndBars.points[cursorIndex].x} ${height}`}
+                    d={`M ${pathAndBars.points[cursorIndex].x} ${topInset} L ${pathAndBars.points[cursorIndex].x} ${plotBottom}`}
                     stroke={theme.colors.textSecondary}
                     strokeWidth="1"
                     strokeDasharray="4,4"
@@ -174,21 +191,17 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
               )}
               
               <Rect
-                x={type === 'line' 
-                  ? Math.max(0, Math.min(pathAndBars.points[cursorIndex].x - 40, width - 80)) 
-                  : Math.max(0, Math.min(pathAndBars.bars[cursorIndex].x + pathAndBars.bars[cursorIndex].w / 2 - 40, width - 80))}
-                y={8}
-                width={80}
-                height={36}
+                x={tooltipX}
+                y={tooltipY}
+                width={tooltipWidth}
+                height={tooltipHeight}
                 rx={6}
                 fill={theme.colors.surfaceElevated}
                 opacity={0.95}
               />
               <SvgText
-                x={type === 'line' 
-                  ? Math.max(40, Math.min(pathAndBars.points[cursorIndex].x, width - 40)) 
-                  : Math.max(40, Math.min(pathAndBars.bars[cursorIndex].x + pathAndBars.bars[cursorIndex].w / 2, width - 40))}
-                y={22}
+                x={tooltipX + tooltipWidth / 2}
+                y={tooltipY + 17}
                 fill={theme.colors.textPrimary}
                 fontSize={12}
                 fontWeight="bold"
@@ -198,10 +211,8 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels, type, height
               </SvgText>
               {labels && labels[cursorIndex] && (
                 <SvgText
-                  x={type === 'line' 
-                    ? Math.max(40, Math.min(pathAndBars.points[cursorIndex].x, width - 40)) 
-                    : Math.max(40, Math.min(pathAndBars.bars[cursorIndex].x + pathAndBars.bars[cursorIndex].w / 2, width - 40))}
-                  y={36}
+                  x={tooltipX + tooltipWidth / 2}
+                  y={tooltipY + 33}
                   fill={theme.colors.textSecondary}
                   fontSize={10}
                   textAnchor="middle"

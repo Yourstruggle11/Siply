@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Share, StyleSheet, Text, View, Pressable } from "react-native";
 import Constants from "expo-constants";
+import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Screen } from "../../src/shared/components/Screen";
 import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
@@ -21,12 +22,16 @@ import { ENTRY_RETENTION_DAYS } from "../../src/core/constants";
 import {
   buildDateKeys,
   computeBestHoursByVolume,
+  computeHistoryOverview,
   computeStreakStats,
   getSummaryForDate,
   computeSmartInsight,
   getDayContextSummary,
   getHourlyVolumeDistribution,
 } from "../../src/features/hydration/domain/history";
+import { buildAiHydrationContext } from "../../src/features/hydration/ai/context";
+import { useAutomaticAiInsight } from "../../src/features/hydration/ai/useAutomaticAiInsight";
+import { useAiHistoryArtifacts } from "../../src/features/hydration/ai/useAiHistoryArtifacts";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -58,6 +63,7 @@ export default function HistoryScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [chartType, setChartType] = useState<ChartType>("line");
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   
   const shareEnabled = Constants.appOwnership !== "expo";
   const shareViewRef = useRef<View>(null);
@@ -88,25 +94,32 @@ export default function HistoryScreen() {
   const bestHours = useMemo(() => computeBestHoursByVolume(history, new Date(), 30), [history]);
 
   const chartData90 = useMemo(() => {
-    const keys = buildDateKeys(new Date(), 90);
-    return keys.map(k => history[k]?.totalMl || 0);
-  }, [history]);
+    return computeHistoryOverview(history, new Date(), 90, goalMl).totals;
+  }, [goalMl, history]);
 
-  const averageIntake = useMemo(() => {
-    const validDays = chartData90.filter(v => v > 0);
-    if (validDays.length === 0) return 0;
-    return validDays.reduce((a, b) => a + b, 0) / validDays.length;
-  }, [chartData90]);
-
-  const goalHitRate = useMemo(() => {
-    if (chartData90.length === 0) return 0;
-    const hits = chartData90.filter(v => v >= goalMl).length;
-    return Math.round((hits / chartData90.length) * 100);
-  }, [chartData90, goalMl]);
+  const historyOverview = useMemo(
+    () => computeHistoryOverview(history, new Date(), 90, goalMl),
+    [goalMl, history]
+  );
+  const averageIntake = historyOverview.averageDailyMl;
+  const goalHitRate = historyOverview.goalHitRatePercent;
 
   const smartInsight = useMemo(() => {
     return computeSmartInsight(history, new Date(), goalMl);
   }, [history, goalMl]);
+
+  const aiContext = useMemo(
+    () => buildAiHydrationContext({ settings, progress, history }, "history_insight"),
+    [history, progress, settings]
+  );
+  const aiInsight = useAutomaticAiInsight(aiContext, smartInsight, isFocused);
+  const artifactSource = useMemo(() => ({ settings, history }), [history, settings]);
+  const historyArtifacts = useAiHistoryArtifacts(artifactSource, isFocused);
+
+  useFocusEffect(useCallback(() => {
+    setIsFocused(true);
+    return () => setIsFocused(false);
+  }, []));
 
   const selectedSummary = useMemo(() => {
     if (!selectedDate) return null;
@@ -210,7 +223,7 @@ export default function HistoryScreen() {
           <PulsingTitle text="History & Insights" style={styles.title} />
 
           {/* Smart Insights Banner */}
-          {smartInsight && (
+          {(smartInsight || aiInsight.text || aiInsight.canManualRefresh) && (
             <AnimatedCard 
               style={[
                 styles.section, 
@@ -224,14 +237,70 @@ export default function HistoryScreen() {
               ]} 
               delay={25}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <MaterialCommunityIcons name="lightbulb-on-outline" size={24} color={theme.colors.accent} />
-                <Text style={[{ color: theme.colors.textPrimary, flex: 1, fontSize: 14, fontWeight: '500', lineHeight: 20 }]}>
-                  {smartInsight}
-                </Text>
-              </View>
+              {smartInsight ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <MaterialCommunityIcons name="lightbulb-on-outline" size={24} color={theme.colors.accent} />
+                  <Text style={[{ color: theme.colors.textPrimary, flex: 1, fontSize: 14, fontWeight: '500', lineHeight: 20 }]}>
+                    {smartInsight}
+                  </Text>
+                </View>
+              ) : null}
+              {aiInsight.text ? (
+                <View style={[styles.aiInsight, { borderTopColor: theme.colors.border }]}>
+                  <View style={styles.aiInsightLabel}>
+                    <MaterialCommunityIcons name="creation" size={15} color={theme.colors.accent} />
+                    <Text style={[styles.aiInsightLabelText, { color: theme.colors.accent }]}>AI insight</Text>
+                  </View>
+                  <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{aiInsight.text}</Text>
+                </View>
+              ) : null}
+              {aiInsight.canManualRefresh ? (
+                <Pressable
+                  onPress={() => void aiInsight.refreshManually()}
+                  disabled={aiInsight.refreshing}
+                  accessibilityRole="button"
+                  style={styles.aiRefreshButton}
+                >
+                  <MaterialCommunityIcons name="refresh" size={16} color={theme.colors.accent} />
+                  <Text style={[styles.aiRefreshText, { color: theme.colors.accent }]}>
+                    {aiInsight.refreshing ? "Refreshing AI insight…" : "Refresh AI insight"}
+                  </Text>
+                </Pressable>
+              ) : null}
             </AnimatedCard>
           )}
+
+          {historyArtifacts.daily ? (
+            <AnimatedCard style={styles.section} delay={40}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily recap · {formatDateLabel(historyArtifacts.daily.periodKey)}</Text>
+              <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{historyArtifacts.daily.deterministicText}</Text>
+              {historyArtifacts.daily.aiText ? (
+                <View style={[styles.aiInsight, { borderTopColor: theme.colors.border }]}>
+                  <View style={styles.aiInsightLabel}>
+                    <MaterialCommunityIcons name="creation" size={15} color={theme.colors.accent} />
+                    <Text style={[styles.aiInsightLabelText, { color: theme.colors.accent }]}>AI insight</Text>
+                  </View>
+                  <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{historyArtifacts.daily.aiText}</Text>
+                </View>
+              ) : null}
+            </AnimatedCard>
+          ) : null}
+
+          {historyArtifacts.weekly ? (
+            <AnimatedCard style={styles.section} delay={45}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Weekly review</Text>
+              <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{historyArtifacts.weekly.deterministicText}</Text>
+              {historyArtifacts.weekly.aiText ? (
+                <View style={[styles.aiInsight, { borderTopColor: theme.colors.border }]}>
+                  <View style={styles.aiInsightLabel}>
+                    <MaterialCommunityIcons name="creation" size={15} color={theme.colors.accent} />
+                    <Text style={[styles.aiInsightLabelText, { color: theme.colors.accent }]}>AI insight</Text>
+                  </View>
+                  <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{historyArtifacts.weekly.aiText}</Text>
+                </View>
+              ) : null}
+            </AnimatedCard>
+          ) : null}
 
           {/* New 90-Day Trend Chart */}
           <AnimatedCard style={styles.section} delay={50}>
@@ -259,7 +328,13 @@ export default function HistoryScreen() {
               </View>
             </View>
             <View style={{ marginTop: 16 }}>
-              <LineChart data={chartData90} type={chartType} height={140} goalMl={goalMl} />
+              <LineChart
+                data={chartData90}
+                labels={historyOverview.keys.map(formatDateLabel)}
+                type={chartType}
+                height={140}
+                goalMl={goalMl}
+              />
             </View>
           </AnimatedCard>
 
@@ -555,6 +630,36 @@ const styles = StyleSheet.create({
   },
   entryListSection: {
     marginTop: 4,
+  },
+  aiInsight: {
+    borderTopWidth: 1,
+    paddingTop: 12,
+    gap: 6,
+  },
+  aiInsightLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  aiInsightLabelText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  aiInsightText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  aiRefreshButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  aiRefreshText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   entryList: {
     marginTop: 8,
