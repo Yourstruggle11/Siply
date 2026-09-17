@@ -2,6 +2,8 @@
 
 Siply is a local-first hydration tracker built with React Native, Expo 54, and expo-router. It stores hydration settings and history on the device, schedules local reminders, and does not require an account or backend.
 
+🌐 **Website & Download:** [try-siply.vercel.app](https://try-siply.vercel.app/)
+
 ## Demo
 
 ![Siply app demo](assets/demo/siply-demo.webp)

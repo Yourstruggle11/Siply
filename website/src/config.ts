@@ -1,5 +1,5 @@
 export const SITE = {
-  url: 'https://siply.app',
+  url: 'https://try-siply.vercel.app',
   title: 'Siply - Local-first hydration tracking',
   description: 'A simple, local-first hydration tracker for mobile. Stores data on your device, sets smart reminders, and respects your privacy.',
   author: 'Siply',
