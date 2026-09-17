@@ -1,0 +1,182 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import Button from '../components/Button.astro';
+import { SITE } from '../config';
+---
+
+<Layout>
+  <Header />
+  
+  <main class="flex-1">
+    <!-- Hero Section -->
+    <section class="relative overflow-hidden pt-12 md:pt-16 lg:pt-20 pb-16">
+      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+        <div class="grid gap-12 lg:grid-cols-2 lg:gap-8 items-center">
+          <div class="max-w-2xl text-center lg:text-left">
+            <h1 class="text-4xl font-extrabold tracking-tight text-[var(--text-primary)] sm:text-5xl md:text-6xl text-balance">
+              Drink smarter. Feel better.
+            </h1>
+            <p class="mt-6 text-lg text-[var(--text-secondary)] text-balance">
+              Siply keeps hydration tracking simple, local, and out of your way. Built natively for mobile with a strict focus on your privacy.
+            </p>
+            <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+              <Button href="/download" variant="primary">Download for Android</Button>
+              <Button href={SITE.githubUrl} variant="outline" target="_blank" rel="noopener noreferrer">View Source</Button>
+            </div>
+          </div>
+          <div class="relative mx-auto w-full max-w-[280px] lg:max-w-xs">
+            <div class="relative overflow-hidden rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-2xl transition-colors">
+              <img src="/assets/screenshots/01-siply.jpg" alt="Siply today tab showing daily progress" class="w-full object-cover rounded-[2rem]" loading="eager" />
+            </div>
+            <!-- Decorative blur effect behind phone -->
+            <div class="absolute -inset-6 -z-10 rounded-[4rem] bg-[var(--color-siply-blue)] opacity-10 blur-3xl dark:opacity-20"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Product Features Showcase -->
+    <section id="features" class="py-16 md:py-24 bg-[var(--surface-elevated)] border-y border-[var(--border-main)]">
+      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 space-y-24 md:space-y-32">
+        
+        <!-- Feature: Quick Logging -->
+        <div class="grid gap-8 md:grid-cols-2 items-center">
+          <div class="order-2 md:order-1 relative mx-auto w-full max-w-[260px]">
+             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden">
+                <img src="/assets/screenshots/02-siply.jpg" alt="Quick hydration logging interface" class="w-full" loading="lazy" />
+             </div>
+          </div>
+          <div class="order-1 md:order-2">
+            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Quick, intuitive logging</h2>
+            <p class="mt-4 text-lg text-[var(--text-secondary)]">
+              Log your intake instantly with custom named drink presets, manual reordering, and time-of-day intelligence. The interface is optimized to stay out of your way, whether you're using a narrow phone or a wider display.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature: History & Trends -->
+        <div class="grid gap-8 md:grid-cols-2 items-center">
+          <div>
+            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">History & Trends</h2>
+            <p class="mt-4 text-lg text-[var(--text-secondary)]">
+              Visualize your progress with a 28-day calendar heatmap, hourly activity, streaks, and local heuristic insights. Siply retains 120 days of daily summaries directly on your device, allowing you to view your performance over time.
+            </p>
+          </div>
+          <div class="relative mx-auto w-full max-w-[260px]">
+             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden">
+                <img src="/assets/screenshots/03-siply.jpg" alt="Siply history and trends calendar" class="w-full" loading="lazy" />
+             </div>
+          </div>
+        </div>
+
+        <!-- Feature: Settings & AI -->
+        <div class="grid gap-8 md:grid-cols-2 items-center">
+          <div class="order-2 md:order-1 relative mx-auto w-full max-w-[260px]">
+             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden">
+                <img src="/assets/screenshots/07-siply.jpg" alt="Siply settings and optional AI configuration" class="w-full" loading="lazy" />
+             </div>
+          </div>
+          <div class="order-1 md:order-2">
+            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Smart defaults, powerful options</h2>
+            <ul class="mt-6 space-y-4 text-[var(--text-secondary)]">
+              <li class="flex gap-3">
+                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
+                </div>
+                <span><strong>Smart Reminders:</strong> Calculates dynamic nudges based on your remaining target and active window.</span>
+              </li>
+              <li class="flex gap-3">
+                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
+                </div>
+                <span><strong>Android Widgets:</strong> Glance at your current progress right from your home screen.</span>
+              </li>
+              <li class="flex gap-3">
+                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
+                </div>
+                <span><strong>Backup & Restore:</strong> Export your data to JSON anytime. You control your history.</span>
+              </li>
+              <li class="flex gap-3">
+                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
+                </div>
+                <span><strong>Optional AI:</strong> Bring your own API key for opt-in insights directly from your device.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy & Local-first -->
+    <section id="privacy" class="py-16 md:py-24">
+      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+        <div class="overflow-hidden rounded-3xl bg-[var(--surface-elevated)] border border-[var(--border-main)] px-6 py-12 sm:p-16 shadow-lg">
+          <div class="mx-auto max-w-3xl text-center">
+            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)] sm:text-4xl">Local-first by design</h2>
+            <p class="mt-4 text-lg leading-8 text-[var(--text-secondary)]">
+              Siply operates on a strict local-first architecture. It does not require an account, has no backend, and keeps your hydration data directly on your device.
+            </p>
+            
+            <div class="mt-12 grid gap-6 sm:grid-cols-2 text-left">
+              <div class="flex gap-4">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+                </div>
+                <div>
+                  <h3 class="font-semibold text-[var(--text-primary)]">No Accounts & No Cloud Sync</h3>
+                  <p class="mt-2 text-sm text-[var(--text-secondary)]">Download and use immediately. There is no sign-up, no Siply server, and your data is stored locally via AsyncStorage.</p>
+                </div>
+              </div>
+              
+              <div class="flex gap-4">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+                </div>
+                <div>
+                  <h3 class="font-semibold text-[var(--text-primary)]">Zero Analytics</h3>
+                  <p class="mt-2 text-sm text-[var(--text-secondary)]">Siply contains no analytics SDKs and no crash-reporting SDKs. Your core tracking remains entirely offline-first.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="py-16 pb-24">
+      <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)] text-center sm:text-4xl mb-10">Frequently Asked Questions</h2>
+        
+        <div class="space-y-6">
+          <div class="border-b border-[var(--border-main)] pb-6">
+            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Is Siply free to use?</h3>
+            <p class="mt-2 text-[var(--text-secondary)]">Yes, the core Siply application is free to download and use. If you choose to enable the optional AI features, you will need to provide your own API key (like OpenAI or Anthropic), which may incur costs directly from that provider depending on your usage.</p>
+          </div>
+          <div class="border-b border-[var(--border-main)] pb-6">
+            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Where is my hydration data stored?</h3>
+            <p class="mt-2 text-[var(--text-secondary)]">Your data is stored strictly on your device using local storage. Siply has no backend and does not upload your tracking data to any cloud.</p>
+          </div>
+          <div class="border-b border-[var(--border-main)] pb-6">
+            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Does Siply work offline?</h3>
+            <p class="mt-2 text-[var(--text-secondary)]">Absolutely. Core tracking, reminders, history, and deterministic insights are offline-first and do not require network access. Network access is only used if you manually opt-in to third-party AI features.</p>
+          </div>
+          <div class="border-b border-[var(--border-main)] pb-6">
+            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Can I see the code?</h3>
+            <p class="mt-2 text-[var(--text-secondary)]">Yes, Siply's source code is publicly available on GitHub. You can inspect how the local-first storage, reminders, and optional AI requests are handled.</p>
+          </div>
+          <div class="pt-2">
+            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Is Siply available on iOS or Google Play?</h3>
+            <p class="mt-2 text-[var(--text-secondary)]">Currently, Siply is distributed directly as an Android APK. Store availability for Google Play and the Apple App Store is planned for the future.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  
+  <Footer />
+</Layout>

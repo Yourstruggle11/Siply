@@ -1,0 +1,23 @@
+---
+interface Props {
+  href: string;
+  variant?: 'primary' | 'secondary' | 'outline';
+  class?: string;
+  target?: string;
+  rel?: string;
+}
+
+const { href, variant = 'primary', class: className = '', ...rest } = Astro.props;
+
+const baseStyles = "inline-flex h-11 items-center justify-center rounded-full px-8 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+const variants = {
+  primary: "bg-[var(--color-siply-blue)] text-white hover:bg-[var(--color-siply-blue-hover)] shadow-sm focus-visible:ring-[var(--color-siply-blue)] focus-visible:ring-offset-[var(--bg-main)]",
+  secondary: "bg-[var(--surface-elevated)] text-[var(--text-primary)] hover:bg-[var(--border-main)] focus-visible:ring-[var(--text-muted)] focus-visible:ring-offset-[var(--bg-main)]",
+  outline: "border border-[var(--border-main)] bg-transparent text-[var(--text-primary)] hover:bg-[var(--surface-elevated)] focus-visible:ring-[var(--text-muted)] focus-visible:ring-offset-[var(--bg-main)]"
+};
+---
+
+<a href={href} class={`${baseStyles} ${variants[variant]} ${className}`} {...rest}>
+  <slot />
+</a>

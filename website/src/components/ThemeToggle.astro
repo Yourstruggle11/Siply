@@ -1,0 +1,93 @@
+---
+---
+<button id="theme-toggle" type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siply-blue" aria-label="Toggle theme">
+  <span id="theme-icon-light" class="hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+  </span>
+  <span id="theme-icon-dark" class="hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+  </span>
+  <span id="theme-icon-system" class="hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+  </span>
+</button>
+
+<script>
+  // Runs entirely on the client
+  class ThemeManager {
+    constructor() {
+      this.themeToggle = document.getElementById('theme-toggle');
+      this.iconLight = document.getElementById('theme-icon-light');
+      this.iconDark = document.getElementById('theme-icon-dark');
+      this.iconSystem = document.getElementById('theme-icon-system');
+      
+      this.themes = ['system', 'light', 'dark'];
+      
+      // Initialize state
+      this.currentPreference = localStorage.getItem('theme') || 'system';
+      if (!this.themes.includes(this.currentPreference)) {
+        this.currentPreference = 'system';
+      }
+      
+      this.init();
+    }
+
+    init() {
+      this.updateUI();
+      
+      this.themeToggle?.addEventListener('click', () => {
+        const currentIndex = this.themes.indexOf(this.currentPreference);
+        this.currentPreference = this.themes[(currentIndex + 1) % this.themes.length];
+        this.applyTheme();
+      });
+
+      // Listen for system preference changes if we are on 'system'
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (this.currentPreference === 'system') {
+          this.applyTheme(false); // Update without saving
+        }
+      });
+    }
+
+    applyTheme(save = true) {
+      if (save) {
+        if (this.currentPreference === 'system') {
+          localStorage.removeItem('theme');
+        } else {
+          localStorage.setItem('theme', this.currentPreference);
+        }
+      }
+
+      const isDark = 
+        this.currentPreference === 'dark' || 
+        (this.currentPreference === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+
+      this.updateUI();
+    }
+
+    updateUI() {
+      this.iconLight?.classList.add('hidden');
+      this.iconDark?.classList.add('hidden');
+      this.iconSystem?.classList.add('hidden');
+
+      if (this.currentPreference === 'light') {
+        this.iconLight?.classList.remove('hidden');
+      } else if (this.currentPreference === 'dark') {
+        this.iconDark?.classList.remove('hidden');
+      } else {
+        this.iconSystem?.classList.remove('hidden');
+      }
+    }
+  }
+
+  // Initialize after DOM is fully ready
+  document.addEventListener('DOMContentLoaded', () => {
+    new ThemeManager();
+  });
+</script>

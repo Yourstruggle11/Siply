@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-siply-blue: #1279DF;
+  --color-siply-blue-hover: #0f67be;
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+    
+    /* Light Theme (Derived from native app semantics) */
+    --bg-main: #F3F4F6;       /* Neutral gray background */
+    --surface-main: #FFFFFF;  /* Pure white cards/surfaces */
+    --surface-elevated: #F9FAFB;
+    --border-main: #E5E7EB;
+    --text-primary: #111827;
+    --text-secondary: #4B5563;
+    --text-muted: #9CA3AF;
+  }
+  
+  .dark {
+    color-scheme: dark;
+    
+    /* Dark Theme (Deep dark app aesthetic) */
+    --bg-main: #000000;       /* Pitch black background */
+    --surface-main: #121212;  /* Slightly elevated surface */
+    --surface-elevated: #1E1E1E; /* Higher elevation */
+    --border-main: #27272A;
+    --text-primary: #F9FAFB;
+    --text-secondary: #A1A1AA;
+    --text-muted: #71717A;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

@@ -1,0 +1,61 @@
+---
+import '../styles/global.css';
+import { SITE } from '../config';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { 
+  title = SITE.title, 
+  description = SITE.description 
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site || SITE.url);
+---
+
+<!doctype html>
+<html lang="en" class="antialiased">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#1279DF" />
+    
+    <link rel="canonical" href={canonicalURL} />
+    <link rel="icon" type="image/png" href="/assets/favicon.png" />
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+
+    <!-- Inline script to prevent FOUC (Flash of unstyled content) -->
+    <script is:inline>
+      const getThemePreference = () => {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) {
+          const stored = localStorage.getItem('theme');
+          if (stored === 'light' || stored === 'dark') return stored;
+        }
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      };
+      
+      const theme = getThemePreference();
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
+  </head>
+  <body class="flex min-h-screen flex-col selection:bg-siply-blue selection:text-white">
+    <slot />
+  </body>
+</html>
