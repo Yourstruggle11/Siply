@@ -2,6 +2,25 @@
 
 Siply is a local-first hydration tracker built with React Native, Expo 54, and expo-router. It stores hydration settings and history on the device, schedules local reminders, and does not require an account or backend.
 
+## Demo
+
+<p align="center">
+  <img src="assets/demo/01-siply.jpg" alt="Siply Today dashboard" width="180" />
+  <img src="assets/demo/02-siply.jpg" alt="Siply reminders and daily log" width="180" />
+  <img src="assets/demo/03-siply.jpg" alt="Siply Ask Siply and quick logging" width="180" />
+  <img src="assets/demo/04-siply.jpg" alt="Siply streak and day detail" width="180" />
+  <img src="assets/demo/05-siply.jpg" alt="Siply hydration trends" width="180" />
+</p>
+
+<p align="center">
+  <img src="assets/demo/06-siply.jpg" alt="Siply best hydration hours and Android widgets" width="180" />
+  <img src="assets/demo/07-siply.jpg" alt="Siply settings and reminder preferences" width="180" />
+  <img src="assets/demo/08-siply.jpg" alt="Siply shareable progress view" width="180" />
+  <img src="assets/demo/09-siply.jpg" alt="Siply goals and account-free setup" width="180" />
+  <img src="assets/demo/10-siply.jpg" alt="Siply splash screen" width="180" />
+</p>
+
+
 ## Current features
 
 - Daily hydration target, active reminder window, sip size, gentle-goal threshold, and light/dark/system appearance.
