@@ -26,9 +26,9 @@ import { SITE } from '../config';
               <Button href={SITE.githubUrl} variant="outline" target="_blank" rel="noopener noreferrer">View Source</Button>
             </div>
           </div>
-          <div class="relative mx-auto w-full max-w-[280px] lg:max-w-xs">
-            <div class="relative overflow-hidden rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-2xl transition-colors">
-              <img src="/assets/screenshots/01-siply.jpg" alt="Siply today tab showing daily progress" class="w-full object-cover rounded-[2rem]" loading="eager" />
+          <div class="relative mx-auto w-full max-w-[280px] lg:max-w-xs animate-float">
+            <div class="relative overflow-hidden rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-2xl transition-all duration-700 hover:scale-[1.02] hover:shadow-[0_20px_50px_rgba(18,121,223,0.15)] group">
+              <img src="/assets/screenshots/01-siply.jpg" alt="Siply today tab showing daily progress" class="w-full object-cover rounded-[2rem] transition-transform duration-700 group-hover:scale-[1.01]" loading="eager" />
             </div>
             <!-- Decorative blur effect behind phone -->
             <div class="absolute -inset-6 -z-10 rounded-[4rem] bg-[var(--color-siply-blue)] opacity-10 blur-3xl dark:opacity-20"></div>
@@ -42,10 +42,10 @@ import { SITE } from '../config';
       <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 space-y-24 md:space-y-32">
         
         <!-- Feature: Quick Logging -->
-        <div class="grid gap-8 md:grid-cols-2 items-center">
+        <div class="grid gap-8 md:grid-cols-2 items-center group/feature">
           <div class="order-2 md:order-1 relative mx-auto w-full max-w-[260px]">
-             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden">
-                <img src="/assets/screenshots/02-siply.jpg" alt="Quick hydration logging interface" class="w-full" loading="lazy" />
+             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden transition-all duration-500 group-hover/feature:-translate-y-2 group-hover/feature:shadow-2xl group-hover/feature:border-[var(--color-siply-blue)]/20">
+                <img src="/assets/screenshots/02-siply.jpg" alt="Quick hydration logging interface" class="w-full transition-transform duration-700 group-hover/feature:scale-[1.02]" loading="lazy" />
              </div>
           </div>
           <div class="order-1 md:order-2">
@@ -57,7 +57,7 @@ import { SITE } from '../config';
         </div>
 
         <!-- Feature: History & Trends -->
-        <div class="grid gap-8 md:grid-cols-2 items-center">
+        <div class="grid gap-8 md:grid-cols-2 items-center group/feature">
           <div>
             <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">History & Trends</h2>
             <p class="mt-4 text-lg text-[var(--text-secondary)]">
@@ -65,17 +65,17 @@ import { SITE } from '../config';
             </p>
           </div>
           <div class="relative mx-auto w-full max-w-[260px]">
-             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden">
-                <img src="/assets/screenshots/03-siply.jpg" alt="Siply history and trends calendar" class="w-full" loading="lazy" />
+             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden transition-all duration-500 group-hover/feature:-translate-y-2 group-hover/feature:shadow-2xl group-hover/feature:border-[var(--color-siply-blue)]/20">
+                <img src="/assets/screenshots/03-siply.jpg" alt="Siply history and trends calendar" class="w-full transition-transform duration-700 group-hover/feature:scale-[1.02]" loading="lazy" />
              </div>
           </div>
         </div>
 
         <!-- Feature: Settings & AI -->
-        <div class="grid gap-8 md:grid-cols-2 items-center">
+        <div class="grid gap-8 md:grid-cols-2 items-center group/feature">
           <div class="order-2 md:order-1 relative mx-auto w-full max-w-[260px]">
-             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden">
-                <img src="/assets/screenshots/07-siply.jpg" alt="Siply settings and optional AI configuration" class="w-full" loading="lazy" />
+             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden transition-all duration-500 group-hover/feature:-translate-y-2 group-hover/feature:shadow-2xl group-hover/feature:border-[var(--color-siply-blue)]/20">
+                <img src="/assets/screenshots/07-siply.jpg" alt="Siply settings and optional AI configuration" class="w-full transition-transform duration-700 group-hover/feature:scale-[1.02]" loading="lazy" />
              </div>
           </div>
           <div class="order-1 md:order-2">

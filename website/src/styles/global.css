@@ -3,6 +3,14 @@
 @theme {
   --color-siply-blue: #1279DF;
   --color-siply-blue-hover: #0f67be;
+  
+  --animate-float: float 6s ease-in-out infinite;
+  
+  @keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-15px); }
+    100% { transform: translateY(0px); }
+  }
 }
 
 @layer base {
