@@ -15,6 +15,13 @@
 <script>
   // Runs entirely on the client
   class ThemeManager {
+    themeToggle: HTMLElement | null;
+    iconLight: HTMLElement | null;
+    iconDark: HTMLElement | null;
+    iconSystem: HTMLElement | null;
+    themes: string[];
+    currentPreference: string;
+
     constructor() {
       this.themeToggle = document.getElementById('theme-toggle');
       this.iconLight = document.getElementById('theme-icon-light');
