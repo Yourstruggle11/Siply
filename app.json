@@ -4,6 +4,12 @@
     "slug": "siply",
     "scheme": "siply",
     "version": "1.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5e964072-425f-45f3-9978-ea2cf7eb3f3a"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",

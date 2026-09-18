@@ -15,7 +15,9 @@
     "build:android:preview": "eas build --platform android --profile preview",
     "build:ios:preview": "eas build --platform ios --profile preview",
     "build:all:production": "eas build --platform all --profile production",
-    "eas:devices": "eas device:create"
+    "eas:devices": "eas device:create",
+    "update:preview": "eas update --channel preview",
+    "update:production": "eas update --channel production"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -40,6 +42,7 @@
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-task-manager": "~14.0.9",
+    "expo-updates": "~29.0.20",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-android-widget": "0.17.2",
