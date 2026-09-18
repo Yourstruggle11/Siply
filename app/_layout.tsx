@@ -15,10 +15,14 @@ import {
 import {
   configureNotificationChannels,
   configureNotificationActions,
-  rescheduleNotifications,
   parseSiplyNotificationId,
   snoozeNotification,
 } from "../src/features/hydration/notifications/notifier";
+import {
+  reconcile as scheduleReconcile,
+  forceReconcile as scheduleForceReconcile,
+  refreshSnapshotCache,
+} from "../src/features/hydration/notifications/scheduleEngine";
 import { registerBackgroundFetchAsync } from "../src/features/hydration/notifications/backgroundTask";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
 import { useDayRollover } from "../src/shared/hooks/useDayRollover";
@@ -100,6 +104,8 @@ const RootLayoutNav = () => {
     void configureNotificationChannels();
     void configureNotificationActions();
     void registerBackgroundFetchAsync();
+    // Pre-populate the snapshot cache so useHydrationPlan can read it
+    void refreshSnapshotCache();
   }, []);
 
   useEffect(() => {
@@ -142,19 +148,23 @@ const RootLayoutNav = () => {
     setRouteReady(true);
   }, [expectedRoot, hydrated, router, segments]);
 
+  // Schedule engine reconcile: fires when hydration state changes meaningfully.
+  // The engine's staleness check prevents unnecessary recomputation.
   useEffect(() => {
     if (!hydrated || !onboarding.completed) {
       return;
     }
-    void rescheduleNotifications(settings, progress.consumedMl, new Date(), quickLog.lastLogAt);
+    void scheduleReconcile({
+      settings,
+      consumedMl: progress.consumedMl,
+      lastLogAt: quickLog.lastLogAt,
+      source: "state_change",
+    });
   }, [
     hydrated,
     onboarding.completed,
-    settings,
-    progress.date,
     progress.consumedMl,
-    quickLog.lastLogAt,
-    ensureNotificationPermission,
+    progress.date,
   ]);
 
   useEffect(() => {
@@ -237,9 +247,15 @@ const RootLayoutNav = () => {
   useAppForeground(() => {
     void refreshProgressDate().then((didChange) => {
       if (hydrated && onboarding.completed) {
-        if (!didChange) {
-          void rescheduleNotifications(settings, progress.consumedMl, new Date(), quickLog.lastLogAt);
-        }
+        // Use forceReconcile on day change, regular reconcile otherwise.
+        // The engine's staleness check prevents redundant rescheduling.
+        const fn = didChange ? scheduleForceReconcile : scheduleReconcile;
+        void fn({
+          settings,
+          consumedMl: didChange ? 0 : progress.consumedMl,
+          lastLogAt: didChange ? null : quickLog.lastLogAt,
+          source: didChange ? "day_rollover" : "app_foreground",
+        });
         void ensureNotificationPermission();
       }
     });

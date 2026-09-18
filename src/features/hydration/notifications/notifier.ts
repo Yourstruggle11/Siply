@@ -233,7 +233,8 @@ export const scheduleNotifications = async (
   settings: HydrationSettings,
   consumedMl: number,
   now = new Date(),
-  lastLogAt?: string | null
+  _lastLogAt?: string | null,
+  remainingNudgeBudget: number = Infinity
 ) => {
   const errors: string[] = [];
   if (!settings || typeof settings.soundEnabled !== "boolean") {
@@ -286,44 +287,19 @@ export const scheduleNotifications = async (
   const channelId = getChannelId(settings.soundEnabled);
   const factor = settings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
   const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
-  let baseSchedule = schedule.slots.slice(0, maxBase);
-
-  // Smart Reminder Skip: if logged within the last 15 minutes, skip the immediate next slot
-  if (lastLogAt && baseSchedule.length > 0) {
-    const lastLogTime = new Date(lastLogAt).getTime();
-    if (now.getTime() - lastLogTime <= 15 * 60 * 1000) {
-      baseSchedule = baseSchedule.slice(1);
-      
-      void recordScheduleDiagnostics({
-        source: "smart_skip",
-        at: new Date().toISOString(),
-        consumedMl,
-        settings: {
-          targetLiters: settings.targetLiters,
-          windowStart: settings.windowStart,
-          windowEnd: settings.windowEnd,
-          sipMl: settings.sipMl,
-          escalationEnabled: settings.escalationEnabled,
-          soundEnabled: settings.soundEnabled,
-        },
-        result: {
-          success: true,
-          requested: 1,
-          scheduled: 0,
-          failed: 0,
-          errors: ["Skipped next reminder because user logged within last 15 minutes."],
-        },
-      });
-    }
-  }
+  const baseSchedule = schedule.slots.slice(0, maxBase);
 
   const horizonEnd = addMinutes(now, 24 * 60);
 
+  // iOS caps local notifications at 64. Reserve a few for snooze/test/summary.
+  const IOS_CAP = 58;
+  let iosRemaining = IOS_CAP;
   if (Platform.OS === "ios") {
     try {
       const pending = await Notifications.getAllScheduledNotificationsAsync();
-      if (pending.length >= 50) {
-        console.warn(`Siply: OS notification cap warning. Already have ${pending.length} pending.`);
+      iosRemaining = Math.max(0, IOS_CAP - pending.length);
+      if (iosRemaining <= 0) {
+        console.warn(`Siply: iOS notification cap reached. ${pending.length} already pending.`);
       }
     } catch (err) {
       console.warn("Siply: failed to check scheduled notifications limit", err);
@@ -332,10 +308,15 @@ export const scheduleNotifications = async (
 
   const requests: Promise<string>[] = [];
   let requested = 0;
+  let nudgeSequencesUsed = 0;
 
   for (const slot of baseSchedule) {
     if (slot.time > horizonEnd) {
       continue;
+    }
+    // Enforce iOS cap
+    if (Platform.OS === "ios" && requested >= iosRemaining) {
+      break;
     }
     const content = buildContent(
       formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder, settings.tone),
@@ -350,11 +331,16 @@ export const scheduleNotifications = async (
     );
     requested += 1;
 
-    if (settings.escalationEnabled) {
+    // Nudges: only schedule if escalation enabled AND we have nudge budget remaining
+    if (settings.escalationEnabled && nudgeSequencesUsed < remainingNudgeBudget) {
+      let scheduledNudgesForSlot = false;
       for (const offset of NUDGE_MINUTES) {
         const nudgeTime = addMinutes(slot.time, offset);
         if (nudgeTime > horizonEnd) {
           continue;
+        }
+        if (Platform.OS === "ios" && requested >= iosRemaining) {
+          break;
         }
         requests.push(
           Notifications.scheduleNotificationAsync({
@@ -369,6 +355,10 @@ export const scheduleNotifications = async (
           })
         );
         requested += 1;
+        scheduledNudgesForSlot = true;
+      }
+      if (scheduledNudgesForSlot) {
+        nudgeSequencesUsed += 1;
       }
     }
   }
@@ -438,7 +428,8 @@ export const rescheduleNotifications = async (
   settings: HydrationSettings,
   consumedMl: number,
   now = new Date(),
-  lastLogAt?: string | null
+  lastLogAt?: string | null,
+  remainingNudgeBudget: number = Infinity
 ) => {
   const errors: string[] = [];
   try {
@@ -447,7 +438,7 @@ export const rescheduleNotifications = async (
     errors.push(error instanceof Error ? error.message : "Failed to cancel notifications.");
   }
 
-  const result = await scheduleNotifications(settings, consumedMl, now, lastLogAt);
+  const result = await scheduleNotifications(settings, consumedMl, now, lastLogAt, remainingNudgeBudget);
 
   try {
     const presented = await Notifications.getPresentedNotificationsAsync();
@@ -542,11 +533,31 @@ export const snoozeNotification = async (mlPerReminder: number, settings: Hydrat
   if (Platform.OS === "ios") {
     try {
       const pending = await Notifications.getAllScheduledNotificationsAsync();
-      if (pending.length >= 64) {
-        console.warn(`Siply: OS notification cap warning. Cannot snooze.`);
+      if (pending.length >= 62) {
+        console.warn(`Siply: OS notification cap reached. Cannot snooze.`);
         return;
       }
     } catch {}
+  }
+
+  // Cancel any pending nudges for the snoozed reminder to prevent duplicates.
+  // Nudge IDs follow the pattern: siply:nudge:<timeMs>:<ml>:<offset>
+  // We cancel all pending nudges that are within the next 15 minutes (the nudge window).
+  try {
+    const pending = await Notifications.getAllScheduledNotificationsAsync();
+    const now = Date.now();
+    const nudgeHorizon = now + 15 * 60 * 1000;
+    for (const n of pending) {
+      const parts = n.identifier.split(":");
+      if (parts[0] === NOTIFICATION_ID_PREFIX && parts[1] === "nudge") {
+        const timeMs = Number.parseInt(parts[2], 10);
+        if (Number.isFinite(timeMs) && timeMs > now && timeMs <= nudgeHorizon) {
+          void Notifications.cancelScheduledNotificationAsync(n.identifier);
+        }
+      }
+    }
+  } catch {
+    // Best effort — continue with snooze even if cleanup fails
   }
   
   const now = new Date();

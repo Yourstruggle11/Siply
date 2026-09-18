@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetItem, mockRescheduleNotifications } = vi.hoisted(() => ({
+const { mockGetItem, mockSetItem, mockRescheduleNotifications } = vi.hoisted(() => ({
   mockGetItem: vi.fn(),
+  mockSetItem: vi.fn(),
   mockRescheduleNotifications: vi.fn(),
 }));
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
     getItem: mockGetItem,
-    setItem: vi.fn(),
+    setItem: mockSetItem,
     removeItem: vi.fn(),
   },
 }));
@@ -33,6 +34,7 @@ vi.mock("expo-background-task", () => ({
 
 vi.mock("../notifications/notifier", () => ({
   rescheduleNotifications: mockRescheduleNotifications,
+  cancelAllNotifications: vi.fn(),
 }));
 
 import { SCHEMA_VERSION } from "../../../core/constants";
@@ -45,7 +47,7 @@ describe("background notification task", () => {
     vi.clearAllMocks();
   });
 
-  it("reads only the canonical persisted Zustand snapshot", async () => {
+  it("reads persisted Zustand snapshot and schedules via engine", async () => {
     const settings = {
       targetLiters: 4.2,
       windowStart: "08:15",
@@ -80,27 +82,64 @@ describe("background notification task", () => {
       hydrated: true,
     };
 
-    mockGetItem.mockImplementation(async (key: string) =>
-      key === HYDRATION_STORE_STORAGE_KEY
-        ? JSON.stringify({ state: persistedState, version: SCHEMA_VERSION })
-        : null,
-    );
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === HYDRATION_STORE_STORAGE_KEY) {
+        return JSON.stringify({ state: persistedState, version: SCHEMA_VERSION });
+      }
+      // Schedule engine reads snapshot + nudge budget from AsyncStorage
+      return null;
+    });
     mockRescheduleNotifications.mockResolvedValue({
       success: true,
       scheduled: 6,
+      requested: 6,
+      failed: 0,
+      errors: [],
     });
 
     const result = await runBackgroundNotificationTask();
 
     expect(result).toBe(1);
     expect(mockGetItem).toHaveBeenCalledWith(HYDRATION_STORE_STORAGE_KEY);
-    expect(mockGetItem).toHaveBeenCalledTimes(1);
+    // The engine also reads the schedule snapshot and nudge budget keys
+    expect(mockGetItem).toHaveBeenCalledTimes(3);
+    // rescheduleNotifications is called by the engine with the nudge budget parameter
     expect(mockRescheduleNotifications).toHaveBeenCalledTimes(1);
     expect(mockRescheduleNotifications).toHaveBeenCalledWith(
       settings,
       1234,
       expect.any(Date),
       lastLogAt,
+      expect.any(Number), // remainingNudgeBudget
     );
+  });
+
+  it("returns Success when onboarding is not completed", async () => {
+    const persistedState = {
+      settings: {},
+      progress: { date: getDateKey(new Date()), consumedMl: 0 },
+      onboarding: { completed: false },
+      quickLog: { presets: [], lastUsedMl: null, lastLogAt: null },
+      history: {},
+    };
+
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === HYDRATION_STORE_STORAGE_KEY) {
+        return JSON.stringify({ state: persistedState, version: SCHEMA_VERSION });
+      }
+      return null;
+    });
+
+    const result = await runBackgroundNotificationTask();
+    expect(result).toBe(1);
+    expect(mockRescheduleNotifications).not.toHaveBeenCalled();
+  });
+
+  it("returns Success when no persisted snapshot exists", async () => {
+    mockGetItem.mockResolvedValue(null);
+
+    const result = await runBackgroundNotificationTask();
+    expect(result).toBe(1);
+    expect(mockRescheduleNotifications).not.toHaveBeenCalled();
   });
 });

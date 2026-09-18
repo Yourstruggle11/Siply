@@ -294,13 +294,19 @@ export const useHydrationStore = create<HydrationStore>()(
       },
 
       refreshProgressDate: async () => {
-        const { progress } = get();
+        const { progress, quickLog } = get();
         const todayKey = getDateKey(new Date());
         if (progress.date === todayKey) {
           return false;
         }
         const nextProgress: HydrationProgress = { date: todayKey, consumedMl: 0 };
-        set({ progress: nextProgress });
+        // Reset lastLogAt on day rollover — stale values from yesterday
+        // can cause the first morning reminder to be incorrectly skipped.
+        const nextQuickLog: QuickLogState = {
+          ...quickLog,
+          lastLogAt: null,
+        };
+        set({ progress: nextProgress, quickLog: nextQuickLog });
         updateAndroidWidget();
         return true;
       },

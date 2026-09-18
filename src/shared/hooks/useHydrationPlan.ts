@@ -9,19 +9,20 @@ import {
   litersToMl,
 } from "../../features/hydration/domain/calculations";
 import { HydrationPlan } from "../../features/hydration/domain/types";
-import { computeReminderSchedule } from "../../features/hydration/domain/schedule";
 import { useHydrationStore } from "../../features/hydration/state/hydrationStore";
+import { useScheduleSnapshot, getNextReminderFromSnapshot, getNextSlotDetails } from "./useScheduleSnapshot";
 
 export const useHydrationPlan = (): HydrationPlan => {
   const settings = useHydrationStore((s) => s.settings);
   const progress = useHydrationStore((s) => s.progress);
+  const { snapshot } = useScheduleSnapshot();
 
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const updateNow = () => setNow(new Date());
     
-    // Update every minute to keep plan fresh while app is open
+    // Update every minute to keep derived values fresh (remainingMl, targetMet)
     const intervalId = setInterval(updateNow, 60000);
     
     // Update immediately when app comes to foreground
@@ -39,16 +40,23 @@ export const useHydrationPlan = (): HydrationPlan => {
 
   return useMemo((): HydrationPlan => {
     const targetMl = litersToMl(settings.targetLiters);
-    const schedule = computeReminderSchedule(now, settings, progress.consumedMl);
-    const nextSlot = schedule.slots[0] ?? null;
     const remainingMl = Math.max(0, targetMl - progress.consumedMl);
+    const targetMet = progress.consumedMl >= targetMl;
     const fallbackPlan = computeHydrationPlan(settings, remainingMl);
     const fallbackMl = fallbackPlan?.mlPerReminder ?? REMINDER_TARGET_ML;
     const fallbackSips = computeSipsPerReminder(fallbackMl, settings.sipMl);
+
+    // Read next reminder from the persisted schedule snapshot.
+    // This is the SOURCE OF TRUTH — it matches what is actually scheduled
+    // with the OS, unlike independently recomputing which produces drift.
+    const nextSlot = getNextSlotDetails(snapshot, now);
+    const nextReminderAt = nextSlot
+      ? new Date(nextSlot.time)
+      : getNextReminderFromSnapshot(snapshot, now);
+
     const mlPerReminder = nextSlot?.mlPerReminder ?? fallbackMl;
     const sipsPerReminder = nextSlot?.sipsPerReminder ?? fallbackSips;
-    const nextReminderAt = nextSlot?.time ?? null;
-    const remindersPerDay = fallbackPlan?.reminders ?? schedule.slots.length;
+    const remindersPerDay = fallbackPlan?.reminders ?? (snapshot?.slots?.length ?? 0);
 
     return {
       targetMl,
@@ -56,9 +64,9 @@ export const useHydrationPlan = (): HydrationPlan => {
       mlPerReminder,
       sipsPerReminder,
       nextReminderAt,
-      targetMet: schedule.targetMet,
+      targetMet,
       remainingMl,
       consumedMl: progress.consumedMl,
     };
-  }, [settings, progress.consumedMl, now]);
+  }, [settings, progress.consumedMl, now, snapshot]);
 };

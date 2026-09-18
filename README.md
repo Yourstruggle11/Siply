@@ -27,17 +27,42 @@ Siply is a local-first hydration tracker built with React Native, Expo 54, and e
 
 ## Notifications
 
-Siply calculates reminder amounts from the remaining daily target and the remaining active window. It schedules a rolling 24-hour set of local notifications, up to 48 scheduled items, and can add nudges 5 and 10 minutes after a reminder.
+Siply uses a centralized schedule engine to coordinate all notification scheduling. The engine serializes concurrent requests through a mutex, persists a schedule snapshot to AsyncStorage, and only recomputes when meaningful state changes occur (a drink is logged, settings change, or the day rolls over). This prevents reminder-time drift from app foregrounding or background tasks.
+
+Reminder slot times are computed on a grid anchored to the configured window start time. For example, with a 30-minute reminder window starting at 07:00, slots fall on 07:00, 07:30, 08:00, and so on. The first future slot after the current time is selected, producing identical times regardless of when the schedule is evaluated. The display layer reads from the persisted snapshot so the time shown on the home screen widgets and in the app exactly matches what is scheduled with the OS.
+
+```mermaid
+flowchart TD
+    A["App Foreground"] --> E["scheduleEngine.reconcile()"]
+    B["State Change"] --> E
+    C["Background Task"] --> E
+    D["Backup Import"] --> F["scheduleEngine.forceReconcile()"]
+
+    E --> G{"Stale?"}
+    G -->|No| H["Return cached snapshot"]
+    G -->|Yes| I["Mutex → Compute → Schedule → Persist"]
+    F --> I
+
+    I --> J["ScheduleSnapshot (AsyncStorage + cache)"]
+    J --> K["useScheduleSnapshot → useHydrationPlan"]
+
+    style E fill:#51cf66,color:#fff
+    style J fill:#339af0,color:#fff
+```
+
+Siply calculates reminder amounts from the remaining daily target and the remaining active window. It schedules a rolling 24-hour set of local notifications, up to 48 scheduled items. Nudge notifications (5 and 10 minutes after a reminder) are governed by a daily budget of four nudge sequences; once the budget is exhausted, remaining reminders fire without nudges. On iOS, the engine enforces a hard cap of 58 pending notifications with six reserved for snooze, test, and summary use. Individual reminder amounts are capped at 400 ml to avoid unrealistic ask amounts when few slots remain.
 
 Reminder notifications provide these actions:
 
 - **I drank** logs the amount encoded in the notification and opens the app.
-- **Snooze 30 min** schedules one replacement reminder.
+- **Snooze 30 min** cancels any pending nudges for the original slot and schedules one replacement reminder.
 - **Skip** dismisses the notification without logging.
 
-The app also schedules a state-independent end-of-window summary with a **View History** action. Live totals are intentionally read after opening History instead of being frozen into notification text when the notification is scheduled. Reminder copy can be encouraging, minimal, or playful. Android uses separate sound and silent notification channels.
+The app also schedules a state-independent end-of-window summary with a **View History** action. A "Last Call" fallback schedules one final reminder near the window end when regular slots have passed, subject to a 15-minute minimum gap from the previous slot and a sip-size threshold below which no Last Call is issued. Reminder copy can be encouraging, minimal, or playful. Android uses separate sound and silent notification channels.
 
-Siply reschedules after hydration, on relevant state changes, when returning to the foreground, after a restore, and through a best-effort Expo background task. Notification actions are deduplicated across restarts with a bounded 24-hour history. The background path reads and normalizes the same persisted Zustand snapshot as the foreground app. The operating system still controls whether and when background work runs, so device-level timing is not guaranteed.
+The schedule engine detects urgency mode when more than 60% of the daily target remains with less than 30% of the active window left. In urgency mode, escalation is automatically enabled and the nudge budget is boosted by two additional sequences. The engine also exports a weekend-awareness helper that detects historically lower weekend intake from 30-day history.
+
+Siply reschedules through the engine after hydration, on relevant state changes, when returning to the foreground, after a restore, and through a best-effort Expo background task. The engine's staleness check ensures the background task does not needlessly shift reminder times. Notification actions are deduplicated across restarts with a bounded 24-hour history. Daily progress rolls over just after local midnight, resetting both consumed millilitres and the last-log timestamp. The operating system still controls whether and when background work runs, so device-level timing is not guaranteed.
 
 ## Optional AI
 
@@ -86,16 +111,16 @@ app/                                  routes and application wiring
 src/core/                             constants, time/unit helpers, storage normalization
 src/features/hydration/domain/        calculations, schedule, history, domain types
 src/features/hydration/state/         Zustand store and persistence
-src/features/hydration/notifications/ scheduling, actions, background task, diagnostics
+src/features/hydration/notifications/ schedule engine, scheduling, actions, background task, diagnostics
 src/features/hydration/backup/        export, import, validation, merge
 src/features/hydration/ai/            redacted context, provider adapters, secure keys, cache
 src/features/hydration/widgets/       Android widget renderer and task handler
 src/features/hydration/ui/            hydration-specific UI
-src/shared/                            reusable components, hooks, network state, theme, haptics
+src/shared/                            reusable components, hooks (incl. schedule snapshot), network state, theme, haptics
 scripts/                               icon generation
 ```
 
-State is managed by Zustand selectors. Zustand's persistence middleware stores hydration state as one JSON value under `siply:hydration_store:v1`, with schema version 3. Older Zustand schema versions are normalized through the same migration path; the retired six-key persistence model is no longer present. Separate AsyncStorage keys hold notification-action deduplication, diagnostics, first-launch time, last-export time, non-secret AI preferences, cached AI annotations/recaps/reviews, and automatic-request counters; those operational values are not included in backups. AI credentials live separately in SecureStore.
+State is managed by Zustand selectors. Zustand's persistence middleware stores hydration state as one JSON value under `siply:hydration_store:v1`, with schema version 3. Older Zustand schema versions are normalized through the same migration path; the retired six-key persistence model is no longer present. Separate AsyncStorage keys hold the schedule engine's snapshot and nudge-budget state, notification-action deduplication, diagnostics, first-launch time, last-export time, non-secret AI preferences, cached AI annotations/recaps/reviews, and automatic-request counters; those operational values are not included in backups. AI credentials live separately in SecureStore.
 
 History days may contain `entries` (`id`, ISO timestamp, and `amountMl`). Entry arrays are retained for seven days; daily totals, goals, hourly counts, and other summaries are retained for 120 days. Backup merging unions retained entries by ID where possible and otherwise keeps the higher known daily total.
 

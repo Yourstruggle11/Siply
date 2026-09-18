@@ -12,7 +12,7 @@ import {
 } from "../../../core/storage/migrations";
 import { normalizeHistory } from "../domain/history";
 import { getDateKey } from "../../../core/time";
-import { rescheduleNotifications } from "../notifications/notifier";
+import { forceReconcile } from "../notifications/scheduleEngine";
 import { validateSiplyBackup } from "./validate";
 import { mergeHistory } from "./merge";
 
@@ -42,7 +42,7 @@ function formatExportedAt(isoString: string): string {
  *   7. Confirmation dialog.
  *   8. Merge history (mergeHistory).
  *   9. Apply to Zustand store and await its persisted write.
- *  10. Success feedback + rescheduleNotifications.
+ *  10. Success feedback + schedule engine reconcile.
  *
  * ANY failure before step 9 returns without modifying state.
  */
@@ -213,7 +213,12 @@ export async function processBackupUri(
 
   // Reschedule notifications to sync with the newly imported settings/progress.
   try {
-    await rescheduleNotifications(normSettings, normProgress.consumedMl, new Date(), normQuickLog.lastLogAt);
+    await forceReconcile({
+      settings: normSettings,
+      consumedMl: normProgress.consumedMl,
+      lastLogAt: normQuickLog.lastLogAt,
+      source: "backup_import",
+    });
   } catch {
     // Reschedule failure should not fail the import — silently ignore.
   }

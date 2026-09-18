@@ -21,9 +21,9 @@ vi.mock("expo-file-system", () => ({
   File: mockFile,
 }));
 
-// ── Mock notifier (rescheduleNotifications) ───────────────────────────────────
-vi.mock("../notifications/notifier", () => ({
-  rescheduleNotifications: vi.fn().mockResolvedValue(undefined),
+// ── Mock schedule engine (forceReconcile) ─────────────────────────────────────
+vi.mock("../notifications/scheduleEngine", () => ({
+  forceReconcile: vi.fn().mockResolvedValue(null),
 }));
 
 // ── Mock AsyncStorage ─────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { importBackup, processBackupUri } from "../backup/import";
 import { useHydrationStore } from "../state/hydrationStore";
-import * as notifier from "../notifications/notifier";
+import * as scheduleEngine from "../notifications/scheduleEngine";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ describe("importBackup", () => {
 
   it("shows error alert and leaves state untouched when file read fails", async () => {
     vi.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue(PICKED_RESULT as any);
-    vi.mocked(notifier.rescheduleNotifications); // keep import live
+    vi.mocked(scheduleEngine.forceReconcile); // keep import live
     mockText.mockRejectedValue(new Error("read error"));
     const stateBefore = JSON.stringify(useHydrationStore.getState());
     vi.mocked(Alert.alert).mockClear();
@@ -229,7 +229,7 @@ describe("importBackup", () => {
     await processBackupUri("file://documents/42", { silentInvalid: true });
 
     expect(useHydrationStore.getState().settings.targetLiters).toBe(2.5);
-    expect(notifier.rescheduleNotifications).toHaveBeenCalledOnce();
+    expect(scheduleEngine.forceReconcile).toHaveBeenCalledOnce();
   });
 
   // ── Confirmation dialog rejection ─────────────────────────────────────────────
@@ -307,14 +307,14 @@ describe("importBackup", () => {
     expect(afterSecond["2026-09-04"].totalMl).toBe(afterFirst["2026-09-04"].totalMl);
   });
 
-  it("calls rescheduleNotifications after a successful import", async () => {
+  it("calls forceReconcile after a successful import", async () => {
     vi.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue(PICKED_RESULT as any);
     mockText.mockResolvedValue(VALID_BACKUP_JSON);
     mockAlertConfirm(true);
 
     await importBackup();
 
-    expect(notifier.rescheduleNotifications).toHaveBeenCalledOnce();
+    expect(scheduleEngine.forceReconcile).toHaveBeenCalledOnce();
   });
 
   it("reports failure and restores the prior state when persistence fails", async () => {
@@ -333,16 +333,16 @@ describe("importBackup", () => {
     expect(state.history).toEqual(INITIAL_STATE.history);
     expect(vi.mocked(Alert.alert).mock.calls.some(([title]) => title === "Import failed")).toBe(true);
     expect(vi.mocked(Alert.alert).mock.calls.some(([title]) => title === "Backup restored")).toBe(false);
-    expect(notifier.rescheduleNotifications).not.toHaveBeenCalled();
+    expect(scheduleEngine.forceReconcile).not.toHaveBeenCalled();
   });
 
-  it("does not call rescheduleNotifications if user cancels confirmation", async () => {
+  it("does not call forceReconcile if user cancels confirmation", async () => {
     vi.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue(PICKED_RESULT as any);
     mockText.mockResolvedValue(VALID_BACKUP_JSON);
     mockAlertConfirm(false);
 
     await importBackup();
 
-    expect(notifier.rescheduleNotifications).not.toHaveBeenCalled();
+    expect(scheduleEngine.forceReconcile).not.toHaveBeenCalled();
   });
 });

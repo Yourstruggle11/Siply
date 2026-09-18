@@ -1,6 +1,6 @@
 import * as TaskManager from "expo-task-manager";
 import * as BackgroundTask from "expo-background-task";
-import { rescheduleNotifications } from "./notifier";
+import { reconcile } from "./scheduleEngine";
 import { readPersistedHydrationSnapshot } from "../state/hydrationStore";
 
 export const BACKGROUND_FETCH_TASK = "siply-background-fetch";
@@ -12,16 +12,15 @@ export const runBackgroundNotificationTask = async () => {
       return BackgroundTask.BackgroundTaskResult.Success;
     }
 
-    const result = await rescheduleNotifications(
-      snapshot.settings,
-      snapshot.progress.consumedMl,
-      new Date(),
-      snapshot.quickLog.lastLogAt
-    );
+    // Use the schedule engine which will check staleness before recomputing.
+    // This prevents the background task from needlessly shifting reminder times.
+    await reconcile({
+      settings: snapshot.settings,
+      consumedMl: snapshot.progress.consumedMl,
+      lastLogAt: snapshot.quickLog.lastLogAt,
+      source: "background_task",
+    });
 
-    if (result.success && result.scheduled > 0) {
-      return BackgroundTask.BackgroundTaskResult.Success;
-    }
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (error) {
     console.error("Siply: background fetch task failed", error);

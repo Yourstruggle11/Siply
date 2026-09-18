@@ -21,6 +21,18 @@ export type ScheduleResult = {
   status?: "success" | "no_window" | "target_met" | "config_error";
 };
 
+// ---------------------------------------------------------------------------
+// Maximum ml we'll ever put in a single reminder. Prevents the "drink 800ml"
+// problem when few slots remain and a lot of ml is left.
+// ---------------------------------------------------------------------------
+const MAX_ML_PER_REMINDER = REMINDER_TARGET_ML * 2; // 400ml
+
+// ---------------------------------------------------------------------------
+// Minimum gap between the last regular slot and a Last-Call slot (minutes).
+// Prevents "two notifications 5 min apart" at end of day.
+// ---------------------------------------------------------------------------
+const LAST_CALL_MIN_GAP_MINUTES = 15;
+
 const buildWindowTimes = (
   start: Date,
   end: Date,
@@ -57,6 +69,52 @@ const buildSlots = (
     sipsPerReminder: sips,
     intervalMinutes,
   }));
+};
+
+// ---------------------------------------------------------------------------
+// Anchor-based slot generation for the current window.
+//
+// Instead of building from window.start and filtering for > now (which shifts
+// every time `now` changes), we compute the "aligned" next slot relative to
+// the window grid. The grid is: windowStart, windowStart + interval,
+// windowStart + 2*interval, ... The first slot is the smallest grid time > now.
+//
+// This produces STABLE slot times regardless of when `now` is evaluated,
+// because the grid is anchored to windowStart which doesn't change.
+// ---------------------------------------------------------------------------
+const buildAnchoredFutureTimes = (
+  windowStart: Date,
+  windowEnd: Date,
+  intervalMinutes: number,
+  now: Date,
+  maxCount: number
+): Date[] => {
+  if (windowEnd <= windowStart || intervalMinutes <= 0 || maxCount <= 0) {
+    return [];
+  }
+
+  const times: Date[] = [];
+  const intervalMs = intervalMinutes * 60 * 1000;
+  const elapsedMs = now.getTime() - windowStart.getTime();
+
+  // How many full intervals have passed since windowStart?
+  // The next slot is at windowStart + (completedIntervals + 1) * interval
+  const completedIntervals = Math.max(0, Math.floor(elapsedMs / intervalMs));
+  let nextSlotIndex = completedIntervals + 1;
+
+  const maxIterations = Math.min(maxCount, 1000);
+  for (let i = 0; i < maxIterations; i++) {
+    const slotTime = new Date(windowStart.getTime() + nextSlotIndex * intervalMs);
+    if (slotTime >= windowEnd) {
+      break;
+    }
+    if (slotTime > now) {
+      times.push(slotTime);
+    }
+    nextSlotIndex += 1;
+  }
+
+  return times.slice(0, maxCount);
 };
 
 export const computeReminderSchedule = (
@@ -123,39 +181,67 @@ export const computeReminderSchedule = (
       continue;
     }
 
-    const windowDurationMinutes = Math.max(
-      0,
-      Math.ceil((window.end.getTime() - window.start.getTime()) / 60000)
-    );
-    const maxWindowSlots = Math.max(1, Math.ceil(windowDurationMinutes / plan.intervalMinutes));
-    const plannedTimes = buildWindowTimes(
-      window.start,
-      window.end,
-      plan.intervalMinutes,
-      maxWindowSlots
-    );
-    const futureTimes = plannedTimes.filter((time) => time > now);
-    const times = futureTimes.slice(0, remainingCapacity);
+    // Use anchor-based slot generation for the current window to produce
+    // stable times that don't shift when `now` changes slightly.
+    // For future windows (not yet active), build from window.start normally.
+    let times: Date[];
+    if (isCurrent) {
+      times = buildAnchoredFutureTimes(
+        window.start,
+        window.end,
+        plan.intervalMinutes,
+        now,
+        remainingCapacity
+      );
+    } else {
+      const windowDurationMinutes = Math.max(
+        0,
+        Math.ceil((window.end.getTime() - window.start.getTime()) / 60000)
+      );
+      const maxWindowSlots = Math.max(1, Math.ceil(windowDurationMinutes / plan.intervalMinutes));
+      const plannedTimes = buildWindowTimes(
+        window.start,
+        window.end,
+        plan.intervalMinutes,
+        maxWindowSlots
+      );
+      times = plannedTimes.slice(0, remainingCapacity);
+    }
 
+    // ----- Last Call fallback -----
+    // If we're in the current window but no regular slots remain (very end of day),
+    // create a single "last call" reminder with smart constraints.
     if (isCurrent && times.length === 0 && windowMinutes > 0) {
-      // Smart "Last Call" fallback:
-      // Don't demand the full remaining amount. Cap it at a normal sip size (200ml).
-      const ml = Math.min(REMINDER_TARGET_ML, Math.max(1, remainingMl));
-      
-      // Try to schedule it 5 minutes before the window closes, 
-      // or immediately (now + 1m) if we are already in the last 5 minutes.
-      let lastCallTime = new Date(window.end.getTime() - 5 * 60000);
-      if (lastCallTime <= now) {
-        lastCallTime = addMinutes(now, 1);
-      }
-      
-      if (lastCallTime < window.end) {
-        slots.push({
-          time: lastCallTime,
-          mlPerReminder: ml,
-          sipsPerReminder: computeSipsPerReminder(ml, settings.sipMl),
-          intervalMinutes: 0,
-        });
+      // Don't bother if remaining is trivially small (less than one sip)
+      if (remainingMl >= settings.sipMl) {
+        // Cap at a reasonable amount — never demand more than MAX_ML_PER_REMINDER
+        const ml = Math.min(MAX_ML_PER_REMINDER, Math.max(1, remainingMl));
+
+        // Schedule 5 minutes before window end, or now+2min if already late
+        let lastCallTime = new Date(window.end.getTime() - 5 * 60000);
+        if (lastCallTime <= now) {
+          lastCallTime = addMinutes(now, 2);
+        }
+
+        // Ensure minimum gap from the last scheduled slot to avoid rapid-fire
+        const lastSlotTime = slots.length > 0 ? slots[slots.length - 1].time : null;
+        if (lastSlotTime) {
+          const gapMs = lastCallTime.getTime() - lastSlotTime.getTime();
+          const minGapMs = LAST_CALL_MIN_GAP_MINUTES * 60000;
+          if (gapMs < minGapMs) {
+            // Push the last call out to respect the minimum gap
+            lastCallTime = new Date(lastSlotTime.getTime() + minGapMs);
+          }
+        }
+
+        if (lastCallTime < window.end) {
+          slots.push({
+            time: lastCallTime,
+            mlPerReminder: ml,
+            sipsPerReminder: computeSipsPerReminder(ml, settings.sipMl),
+            intervalMinutes: 0, // sentinel: this is a last-call, not a regular slot
+          });
+        }
       }
       continue;
     }
@@ -163,7 +249,10 @@ export const computeReminderSchedule = (
     if (!times.length) {
       continue;
     }
-    const mlPerReminder = Math.max(1, Math.round(remainingMl / times.length));
+
+    // Cap mlPerReminder to prevent unrealistic "drink 800ml" notifications
+    const rawMlPerReminder = Math.max(1, Math.round(remainingMl / times.length));
+    const mlPerReminder = Math.min(rawMlPerReminder, MAX_ML_PER_REMINDER);
     slots.push(...buildSlots(times, mlPerReminder, plan.intervalMinutes, settings.sipMl));
   }
 
