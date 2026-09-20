@@ -1,7 +1,7 @@
 export const SITE = {
   url: 'https://try-siply.vercel.app',
-  title: 'Siply - Local-first hydration tracking',
-  description: 'A local-first hydration tracker with reliable smart reminders, private on-device history, and optional bring-your-own-key AI.',
+  title: 'Siply — Hydration reminders that keep up',
+  description: 'A private, local-first hydration app with reliable reminders that adjust around your progress. Free for Android, with no account required.',
   author: 'Siply',
   githubUrl: 'https://github.com/Yourstruggle11/Siply',
 };

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "mv ../tsconfig.json ../tsconfig.mobile.json || true; astro check && astro build; mv ../tsconfig.mobile.json ../tsconfig.json || true",
+    "build": "astro check && astro build",
     "preview": "astro preview",
     "astro": "astro",
     "check": "astro check"

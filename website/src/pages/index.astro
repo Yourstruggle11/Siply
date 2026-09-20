@@ -2,187 +2,527 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import Button from '../components/Button.astro';
 import { SITE } from '../config';
+
+const facts = [
+  ['No account', 'Start tracking without creating a profile.'],
+  ['Works offline', 'Logging, reminders, and history stay available.'],
+  ['Open source', 'See exactly how Siply handles your data.'],
+  ['Free on Android', 'Download the APK and make it yours.'],
+];
+
+const steps = [
+  {
+    number: '01',
+    title: 'Set your day',
+    copy: 'Choose a daily target and the hours when reminders should be active.',
+  },
+  {
+    number: '02',
+    title: 'Log in seconds',
+    copy: 'Use a preset, enter a custom amount, or log straight from a notification.',
+  },
+  {
+    number: '03',
+    title: 'Keep moving',
+    copy: 'Siply adjusts the remaining plan after every drink and keeps the next step clear.',
+  },
+];
+
+const extras = [
+  {
+    icon: 'bell',
+    title: 'Act from the reminder',
+    copy: 'Log a drink without opening the app, with optional follow-up nudges kept under control.',
+  },
+  {
+    icon: 'widget',
+    title: 'Progress at a glance',
+    copy: 'Android home-screen widgets show today’s progress and the next planned reminder.',
+  },
+  {
+    icon: 'backup',
+    title: 'Your history, portable',
+    copy: 'Export a JSON backup when you want it and restore it on your terms.',
+  },
+  {
+    icon: 'spark',
+    title: 'AI is optional',
+    copy: 'Bring your own provider key for Ask Siply and extra insights. Core features never depend on it.',
+  },
+  {
+    icon: 'tune',
+    title: 'Made for your routine',
+    copy: 'Personalize units, drink presets, reminder tone, timing options, and appearance.',
+  },
+  {
+    icon: 'share',
+    title: 'Progress worth sharing',
+    copy: 'Turn a good week into a simple visual you can save or share when you choose.',
+  },
+];
+
+const iconPaths: Record<string, string> = {
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
+  widget: 'M4 4h6v6H4zM14 4h6v10h-6zM4 14h6v6H4zM14 18h6v2h-6z',
+  backup: 'M12 3v12m0-12 4 4m-4-4L8 7M5 13v7h14v-7',
+  spark: 'M12 3l1.35 4.65L18 9l-4.65 1.35L12 15l-1.35-4.65L6 9l4.65-1.35zM19 16l.65 2.35L22 19l-2.35.65L19 22l-.65-2.35L16 19l2.35-.65z',
+  tune: 'M4 7h10M18 7h2M14 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0M4 17h2m4 0h10M6 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0',
+  share: 'M8 12l8-5m-8 5 8 5M6 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4m12-5a2 2 0 1 0 0-4 2 2 0 0 0 0 4m0 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4',
+};
 ---
 
-<Layout>
+<Layout preloadImage="/assets/screenshots/01-siply.jpg">
   <Header />
-  
-  <main class="flex-1">
-    <!-- Hero Section -->
-    <section class="relative overflow-hidden pt-12 md:pt-16 lg:pt-20 pb-16">
-      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-        <div class="grid gap-12 lg:grid-cols-2 lg:gap-8 items-center">
-          <div class="max-w-2xl text-center lg:text-left">
-            <h1 class="text-4xl font-extrabold tracking-tight text-[var(--text-primary)] sm:text-5xl md:text-6xl text-balance">
-              Drink smarter. Feel better.
-            </h1>
-            <p class="mt-6 text-lg text-[var(--text-secondary)] text-balance">
-              Siply keeps hydration tracking simple, local, and out of your way. Built natively for mobile with a strict focus on your privacy.
-            </p>
-            <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button href="/download" variant="primary">Download for Android</Button>
-              <Button href={SITE.githubUrl} variant="outline" target="_blank" rel="noopener noreferrer">View Source</Button>
-            </div>
+
+  <main id="main-content" class="flex-1">
+    <section class="hero-section">
+      <div class="hero-orb hero-orb-one" aria-hidden="true"></div>
+      <div class="hero-orb hero-orb-two" aria-hidden="true"></div>
+      <div class="mx-auto grid max-w-7xl items-center gap-14 px-4 py-16 sm:px-6 md:py-24 lg:grid-cols-[1.03fr_.97fr] lg:gap-16 lg:px-8 lg:py-28">
+        <div class="relative z-10 max-w-2xl hero-copy">
+          <p class="eyebrow">Free on Android <span aria-hidden="true">·</span> No account</p>
+          <h1 class="mt-5 text-balance text-[clamp(3rem,6.5vw,5.85rem)] font-[850] leading-[.93] tracking-[-.06em] text-[var(--text-primary)]">
+            Hydration reminders that <span class="text-gradient">keep up.</span>
+          </h1>
+          <p class="mt-7 max-w-xl text-balance text-lg leading-8 text-[var(--text-secondary)] sm:text-xl">
+            Set your target and active hours. Siply plans the reminders, adjusts after every drink, and keeps your hydration data on your device.
+          </p>
+          <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+            <a class="button-primary" href="/download">
+              Get Siply for Android
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>
+            </a>
+            <a class="button-secondary" href="#how-it-works">See how it works</a>
           </div>
-          <div class="relative mx-auto w-full max-w-[280px] lg:max-w-xs animate-float">
-            <div class="relative overflow-hidden rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-2xl transition-all duration-700 hover:scale-[1.02] hover:shadow-[0_20px_50px_rgba(18,121,223,0.15)] group">
-              <img src="/assets/screenshots/01-siply.jpg" alt="Siply today tab showing daily progress" class="w-full object-cover rounded-[2rem] transition-transform duration-700 group-hover:scale-[1.01]" loading="eager" />
+          <ul class="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-[var(--text-secondary)]" aria-label="Siply benefits">
+            <li class="trust-item"><span aria-hidden="true">✓</span> Works offline</li>
+            <li class="trust-item"><span aria-hidden="true">✓</span> Open source</li>
+            <li class="trust-item"><span aria-hidden="true">✓</span> Private by default</li>
+          </ul>
+        </div>
+
+        <div class="motion-stage" data-motion-stage aria-label="Siply adjusting the next reminder after a drink is logged">
+          <div class="stage-glow" aria-hidden="true"></div>
+          <div class="poster-card hero-poster">
+            <img src="/assets/screenshots/01-siply.jpg" width="720" height="1564" alt="Siply Today screen showing a completed daily hydration goal" fetchpriority="high" decoding="async" />
+          </div>
+
+          <div class="plan-card" aria-hidden="true">
+            <div class="plan-card-top">
+              <span class="plan-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0" /></svg>
+              </span>
+              <span>Next reminder</span>
             </div>
-            <!-- Decorative blur effect behind phone -->
-            <div class="absolute -inset-6 -z-10 rounded-[4rem] bg-[var(--color-siply-blue)] opacity-10 blur-3xl dark:opacity-20"></div>
+            <div class="plan-time-wrap">
+              <strong class="plan-time time-before">4:45 PM</strong>
+              <strong class="plan-time time-after">5:15 PM</strong>
+            </div>
+            <span class="plan-status">Plan updated</span>
+          </div>
+
+          <div class="log-chip" aria-hidden="true">
+            <span>+</span> 250 ml logged
+          </div>
+          <div class="local-chip" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 11V8a5 5 0 0 1 10 0v3m-11 0h12v10H6z" /></svg>
+            Stored on device
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Product Features Showcase -->
-    <section id="features" class="py-16 md:py-24 bg-[var(--surface-elevated)] border-y border-[var(--border-main)]">
-      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 space-y-24 md:space-y-32">
-        
-        <!-- Feature: Quick Logging -->
-        <div class="grid gap-8 md:grid-cols-2 items-center group/feature">
-          <div class="order-2 md:order-1 relative mx-auto w-full max-w-[260px]">
-             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden transition-all duration-500 group-hover/feature:-translate-y-2 group-hover/feature:shadow-2xl group-hover/feature:border-[var(--color-siply-blue)]/20">
-                <img src="/assets/screenshots/02-siply.jpg" alt="Quick hydration logging interface" class="w-full transition-transform duration-700 group-hover/feature:scale-[1.02]" loading="lazy" />
-             </div>
+    <section class="border-y border-[var(--border-main)] bg-[var(--surface-main)]/60" aria-label="Siply at a glance">
+      <div class="mx-auto grid max-w-7xl grid-cols-2 gap-px px-4 sm:px-6 lg:grid-cols-4 lg:px-8">
+        {facts.map(([title, copy], index) => (
+          <div class="fact-item" data-reveal style={`--reveal-delay:${index * 70}ms`}>
+            <strong>{title}</strong>
+            <span>{copy}</span>
           </div>
-          <div class="order-1 md:order-2">
-            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Quick, intuitive logging</h2>
-            <p class="mt-4 text-lg text-[var(--text-secondary)]">
-              Log your intake instantly with custom named drink presets, manual reordering, and time-of-day intelligence. The interface is optimized to stay out of your way, whether you're using a narrow phone or a wider display.
-            </p>
-          </div>
-        </div>
+        ))}
+      </div>
+    </section>
 
-        <!-- Feature: History & Trends -->
-        <div class="grid gap-8 md:grid-cols-2 items-center group/feature">
-          <div>
-            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">History & Trends</h2>
-            <p class="mt-4 text-lg text-[var(--text-secondary)]">
-              Visualize your progress with a 28-day calendar heatmap, hourly activity, streaks, and local heuristic insights. Siply retains 120 days of daily summaries directly on your device, allowing you to view your performance over time.
-            </p>
-          </div>
-          <div class="relative mx-auto w-full max-w-[260px]">
-             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden transition-all duration-500 group-hover/feature:-translate-y-2 group-hover/feature:shadow-2xl group-hover/feature:border-[var(--color-siply-blue)]/20">
-                <img src="/assets/screenshots/03-siply.jpg" alt="Siply history and trends calendar" class="w-full transition-transform duration-700 group-hover/feature:scale-[1.02]" loading="lazy" />
-             </div>
-          </div>
+    <section id="how-it-works" class="section-shell">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="mx-auto max-w-3xl text-center" data-reveal>
+          <p class="eyebrow justify-center">How it works</p>
+          <h2 class="section-heading mx-auto mt-4">Set it once. Siply handles the rhythm.</h2>
+          <p class="section-copy mx-auto mt-5">A clear plan that responds when your day changes, without turning hydration into another task to manage.</p>
         </div>
+        <div class="step-grid mt-14">
+          {steps.map((step, index) => (
+            <article class="step-card" data-reveal style={`--reveal-delay:${index * 110}ms`}>
+              <div class="step-heading-row">
+                <span class="step-number">{step.number}</span>
+                <span class="step-state">{index === 0 ? 'Plan' : index === 1 ? 'Log' : 'Adjust'}</span>
+              </div>
 
-        <!-- Feature: Settings & AI -->
-        <div class="grid gap-8 md:grid-cols-2 items-center group/feature">
-          <div class="order-2 md:order-1 relative mx-auto w-full max-w-[260px]">
-             <div class="rounded-[2.5rem] border-[6px] border-[var(--border-main)] bg-[var(--surface-main)] shadow-xl overflow-hidden transition-all duration-500 group-hover/feature:-translate-y-2 group-hover/feature:shadow-2xl group-hover/feature:border-[var(--color-siply-blue)]/20">
-                <img src="/assets/screenshots/07-siply.jpg" alt="Siply settings and optional AI configuration" class="w-full transition-transform duration-700 group-hover/feature:scale-[1.02]" loading="lazy" />
-             </div>
-          </div>
-          <div class="order-1 md:order-2">
-            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Smart defaults, powerful options</h2>
-            <ul class="mt-6 space-y-4 text-[var(--text-secondary)]">
-              <li class="flex gap-3">
-                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
-                </div>
-                <span><strong>Reliable Reminders:</strong> Stable, OS-verified reminder plans do not drift between app opens, recover automatically after scheduling failures, and leave a quiet period after every drink.</span>
-              </li>
-              <li class="flex gap-3">
-                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
-                </div>
-                <span><strong>Intelligent Scheduling:</strong> Optional catch-up nudges, weekend-aware timing, and Android precise-timing access stay under your control.</span>
-              </li>
-              <li class="flex gap-3">
-                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
-                </div>
-                <span><strong>Android Widgets:</strong> See your current progress and next verified reminder directly from your home screen.</span>
-              </li>
-              <li class="flex gap-3">
-                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
-                </div>
-                <span><strong>Backup & Restore:</strong> Export your data to JSON anytime. You control your history.</span>
-              </li>
-              <li class="flex gap-3">
-                <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z"/></svg>
-                </div>
-                <span><strong>Optional AI:</strong> Bring your own OpenAI, Anthropic, Gemini, or NVIDIA key for Ask Siply and opt-in insights sent directly from your device.</span>
-              </li>
+              <div class:list={['step-scene', `step-scene-${index + 1}`]} aria-hidden="true">
+                {index === 0 && (
+                  <>
+                    <div class="active-window">
+                      <span class="scene-label">Active hours</span>
+                      <div><strong>7 AM</strong><i>→</i><strong>10 PM</strong></div>
+                    </div>
+                    <div class="target-chip">
+                      <span class="target-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M22 12h-3"/></svg>
+                      </span>
+                      <span><small>Daily target</small><strong>2,000 ml</strong></span>
+                    </div>
+                  </>
+                )}
+
+                {index === 1 && (
+                  <>
+                    <div class="scene-cup">
+                      <svg viewBox="0 0 48 60" fill="none"><path d="M8 9h32l-4 43H12L8 9Z"/><path class="scene-water" d="M11 28c8-5 17 5 26 0l-2 21H13l-2-21Z"/></svg>
+                    </div>
+                    <div class="scene-log-chip"><strong>+250 ml</strong><span>Added now</span></div>
+                    <span class="scene-ripple"></span>
+                  </>
+                )}
+
+                {index === 2 && (
+                  <>
+                    <div class="scene-reminder">
+                      <span class="scene-clock">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"/></svg>
+                      </span>
+                      <span class="scene-reminder-copy">
+                        <small>Next reminder</small>
+                        <span class="scene-time-wrap">
+                          <strong class="scene-time scene-time-before">4:45 PM</strong>
+                          <strong class="scene-time scene-time-after">5:15 PM</strong>
+                        </span>
+                      </span>
+                    </div>
+                    <div class="scene-updated"><span></span> Adjusted after your drink</div>
+                  </>
+                )}
+              </div>
+
+              <h3>{step.title}</h3>
+              <p>{step.copy}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section-shell feature-shell">
+      <div class="mx-auto max-w-7xl space-y-24 px-4 sm:px-6 lg:space-y-32 lg:px-8">
+        <article class="feature-row">
+          <div class="feature-copy" data-reveal>
+            <p class="eyebrow">Reliable reminders</p>
+            <h2 class="section-heading mt-4">A plan that adapts after every drink.</h2>
+            <p class="section-copy mt-5">Siply recalculates from what you have actually logged, keeps a quiet period after each drink, and makes the next reminder easy to understand.</p>
+            <ul class="benefit-list">
+              <li><span>01</span><div><strong>Stable between logs</strong><p>Your schedule does not drift just because you reopen the app.</p></div></li>
+              <li><span>02</span><div><strong>Gentle when needed</strong><p>Optional nudges are spread across the day and respect your settings.</p></div></li>
+              <li><span>03</span><div><strong>Clear next step</strong><p>See your next sip and reminder time without decoding a schedule.</p></div></li>
             </ul>
           </div>
-        </div>
-      </div>
-    </section>
+          <div class="feature-visual reminder-visual" data-reveal style="--reveal-delay:120ms">
+            <div class="poster-card feature-poster poster-reminders">
+              <img src="/assets/screenshots/02-siply.jpg" width="720" height="1564" loading="lazy" alt="Siply showing today’s drink log and the next reminder" />
+            </div>
+            <div class="orbit-ring" aria-hidden="true"></div>
+            <div class="mini-note mini-note-one" aria-hidden="true"><span></span> Quiet period active</div>
+            <div class="mini-note mini-note-two" aria-hidden="true"><span></span> Next sip planned</div>
+          </div>
+        </article>
 
-    <!-- Privacy & Local-first -->
-    <section id="privacy" class="py-16 md:py-24">
-      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-        <div class="overflow-hidden rounded-3xl bg-[var(--surface-elevated)] border border-[var(--border-main)] px-6 py-12 sm:p-16 shadow-lg">
-          <div class="mx-auto max-w-3xl text-center">
-            <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)] sm:text-4xl">Local-first by design</h2>
-            <p class="mt-4 text-lg leading-8 text-[var(--text-secondary)]">
-              Siply operates on a strict local-first architecture. It does not require an account, has no backend, and keeps your hydration data directly on your device.
-            </p>
-            
-            <div class="mt-12 grid gap-6 sm:grid-cols-2 text-left">
-              <div class="flex gap-4">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                </div>
-                <div>
-                  <h3 class="font-semibold text-[var(--text-primary)]">No Accounts & No Cloud Sync</h3>
-                  <p class="mt-2 text-sm text-[var(--text-secondary)]">Download and use immediately. There is no sign-up, no Siply server, and your data is stored locally via AsyncStorage.</p>
-                </div>
-              </div>
-              
-              <div class="flex gap-4">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-main)] border border-[var(--border-main)] text-[var(--color-siply-blue)]">
-                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
-                </div>
-                <div>
-                  <h3 class="font-semibold text-[var(--text-primary)]">Zero Analytics</h3>
-                  <p class="mt-2 text-sm text-[var(--text-secondary)]">Siply contains no analytics SDKs and no crash-reporting SDKs. Your core tracking remains entirely offline-first.</p>
-                </div>
-              </div>
+        <article class="feature-row feature-row-reverse">
+          <div class="feature-copy" data-reveal>
+            <p class="eyebrow">History that helps</p>
+            <h2 class="section-heading mt-4">See the pattern, not just the number.</h2>
+            <p class="section-copy mt-5">Follow your daily progress, streaks, goal consistency, and best hydration hours. Tap into a day when you want the details.</p>
+            <div class="metric-strip" aria-label="History highlights">
+              <div><strong>120</strong><span>days retained</span></div>
+              <div><strong>28</strong><span>day consistency view</span></div>
+              <div><strong>1</strong><span>clear daily story</span></div>
             </div>
           </div>
+          <div class="feature-visual history-visual" data-reveal style="--reveal-delay:120ms">
+            <div class="poster-card feature-poster poster-history">
+              <img src="/assets/screenshots/05-siply.jpg" width="720" height="1564" loading="lazy" alt="Siply History screen with hydration trend and consistency views" />
+            </div>
+            <div class="trend-line" aria-hidden="true">
+              <svg viewBox="0 0 220 80" fill="none"><path d="M3 65c25-5 25-28 49-27 20 1 24 21 45 13 23-9 27-39 53-34 18 4 29 25 67 7" /><circle cx="150" cy="17" r="5" /></svg>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section-shell overflow-hidden">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="max-w-3xl" data-reveal>
+          <p class="eyebrow">More of what helps</p>
+          <h2 class="section-heading mt-4">Useful depth, without the clutter.</h2>
+          <p class="section-copy mt-5">Siply stays focused on the habit, while giving you control when you want it.</p>
+        </div>
+        <div class="bento-grid mt-14">
+          {extras.map((item, index) => (
+            <article class:list={['bento-card', index === 0 || index === 3 ? 'bento-wide' : '']} data-reveal style={`--reveal-delay:${(index % 3) * 80}ms`}>
+              <span class="bento-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d={iconPaths[item.icon]} /></svg>
+              </span>
+              <h3>{item.title}</h3>
+              <p>{item.copy}</p>
+            </article>
+          ))}
         </div>
       </div>
     </section>
 
-    <!-- FAQ Section -->
-    <section id="faq" class="py-16 pb-24">
-      <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <h2 class="text-3xl font-bold tracking-tight text-[var(--text-primary)] text-center sm:text-4xl mb-10">Frequently Asked Questions</h2>
-        
-        <div class="space-y-6">
-          <div class="border-b border-[var(--border-main)] pb-6">
-            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Is Siply free to use?</h3>
-            <p class="mt-2 text-[var(--text-secondary)]">Yes, the core Siply application is free to download and use. Optional AI requires your own OpenAI, Anthropic, Gemini, or NVIDIA API key and may incur charges from that provider based on your usage.</p>
+    <section id="privacy" class="section-shell privacy-shell">
+      <div class="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:px-8">
+        <div data-reveal>
+          <p class="eyebrow">Private by design</p>
+          <h2 class="section-heading mt-4">Your hydration data stays yours.</h2>
+          <p class="section-copy mt-5">Siply’s core experience runs locally. There is no Siply account, backend, advertising profile, or analytics SDK watching the habit you are building.</p>
+          <a class="text-link mt-7" href={SITE.githubUrl} target="_blank" rel="noopener noreferrer">Inspect the source <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="privacy-panel" data-reveal style="--reveal-delay:100ms">
+          <div class="privacy-lock" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 11V8a5 5 0 0 1 10 0v3m-11 0h12v10H6z" /></svg>
           </div>
-          <div class="border-b border-[var(--border-main)] pb-6">
-            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Where is my hydration data stored?</h3>
-            <p class="mt-2 text-[var(--text-secondary)]">Your hydration history is stored on your device, with no Siply account, backend, analytics, or cloud sync. If you opt into AI, Siply sends a bounded hydration summary directly to your chosen provider for that request; raw log identifiers and exact entry timestamps are not included.</p>
+          <div class="privacy-grid">
+            <div><strong>No account</strong><span>Open the app and begin.</span></div>
+            <div><strong>On-device history</strong><span>Your core data stays local.</span></div>
+            <div><strong>Zero app analytics</strong><span>No behavior tracking SDKs.</span></div>
+            <div><strong>AI only if invited</strong><span>You choose a provider and key.</span></div>
           </div>
-          <div class="border-b border-[var(--border-main)] pb-6">
-            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Does Siply work offline?</h3>
-            <p class="mt-2 text-[var(--text-secondary)]">Absolutely. Core tracking, reminders, history, and deterministic insights are offline-first and do not require network access. Network access is only used if you manually opt-in to third-party AI features.</p>
-          </div>
-          <div class="border-b border-[var(--border-main)] pb-6">
-            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Can I see the code?</h3>
-            <p class="mt-2 text-[var(--text-secondary)]">Yes, Siply's source code is publicly available on GitHub. You can inspect how the local-first storage, reminders, and optional AI requests are handled.</p>
-          </div>
-          <div class="pt-2">
-            <h3 class="text-lg font-semibold text-[var(--text-primary)]">Is Siply available on iOS or Google Play?</h3>
-            <p class="mt-2 text-[var(--text-secondary)]">Currently, Siply is distributed directly as an Android APK. Store availability for Google Play and the Apple App Store is planned for the future.</p>
-          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="section-shell">
+      <div class="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[.72fr_1.28fr] lg:px-8">
+        <div data-reveal>
+          <p class="eyebrow">Good to know</p>
+          <h2 class="section-heading mt-4">A few honest answers.</h2>
+          <p class="section-copy mt-5">Everything you need to know before trying Siply.</p>
+        </div>
+        <div class="faq-list" data-reveal style="--reveal-delay:100ms">
+          <details open>
+            <summary>Is Siply free to use?<span aria-hidden="true"></span></summary>
+            <p>Yes. The core app is free. Optional AI features use an API key from a supported provider and any provider charges are yours.</p>
+          </details>
+          <details>
+            <summary>Does Siply work offline?<span aria-hidden="true"></span></summary>
+            <p>Yes. Logging, history, reminders, and local insights work without internet. Network access is used only for optional AI features and app updates.</p>
+          </details>
+          <details>
+            <summary>Where is my hydration data stored?<span aria-hidden="true"></span></summary>
+            <p>On your device. Siply has no account system or backend. You can export a backup whenever you choose.</p>
+          </details>
+          <details>
+            <summary>Why is the Android app an APK?<span aria-hidden="true"></span></summary>
+            <p>Siply is currently distributed directly through its public GitHub release. The download page walks you through the one-time installation steps.</p>
+          </details>
+          <details>
+            <summary>Is Siply on iOS or Google Play?<span aria-hidden="true"></span></summary>
+            <p>Not yet. The current release is available as a direct Android download, with store distribution planned for the future.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="px-4 pb-20 sm:px-6 md:pb-28 lg:px-8">
+      <div class="final-cta mx-auto max-w-7xl" data-reveal>
+        <div class="cta-drop" aria-hidden="true">
+          <svg viewBox="0 0 48 48" fill="none"><path d="M24 5S10 21.2 10 31a14 14 0 0 0 28 0C38 21.2 24 5 24 5Z" /></svg>
+        </div>
+        <p class="eyebrow justify-center">A better rhythm starts here</p>
+        <h2>Drink water. Keep your day.</h2>
+        <p>Try Siply on Android. No account, no setup maze, no cloud required.</p>
+        <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          <a class="button-primary" href="/download">Get Siply for Android</a>
+          <a class="button-secondary" href={SITE.githubUrl} target="_blank" rel="noopener noreferrer">View on GitHub</a>
         </div>
       </div>
     </section>
   </main>
-  
+
   <Footer />
 </Layout>
+
+<style>
+  .hero-section { position: relative; overflow: hidden; }
+  .hero-copy { animation: hero-enter 850ms cubic-bezier(.22,1,.36,1) both; }
+  .text-gradient { color: #1279df; background: linear-gradient(115deg,#0f77dc 15%,#45c7df 70%,#238df0); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero-orb { position: absolute; border-radius: 999px; filter: blur(2px); pointer-events: none; }
+  .hero-orb-one { width: 22rem; height: 22rem; left: -12rem; top: 4rem; background: radial-gradient(circle,rgba(45,194,218,.2),transparent 68%); }
+  .hero-orb-two { width: 32rem; height: 32rem; right: -15rem; bottom: -8rem; background: radial-gradient(circle,rgba(18,121,223,.23),transparent 67%); }
+  .trust-item { display:flex; align-items:center; gap:.45rem; }
+  .trust-item span { display:grid; place-items:center; width:1.25rem; height:1.25rem; border-radius:999px; background:color-mix(in srgb,#1279df 13%,transparent); color:#1279df; font-size:.72rem; }
+  .motion-stage { position:relative; width:min(100%,35rem); min-height:39rem; margin-inline:auto; perspective:1200px; transform-style:preserve-3d; }
+  .stage-glow { position:absolute; inset:12% 3% 5%; border-radius:50%; background:radial-gradient(circle,rgba(54,177,234,.26),rgba(18,121,223,.08) 48%,transparent 70%); filter:blur(22px); }
+  .hero-poster { --card-rotation: 3deg; position:absolute; top:0; left:50%; width:min(68%,20rem); transform:translateX(-50%) rotate(3deg) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)); transform-origin:center; animation:poster-float 7s 250ms ease-in-out infinite; transition:transform 200ms ease-out; }
+  .hero-poster img { aspect-ratio:720/1564; object-fit:cover; }
+  .plan-card { position:absolute; z-index:3; right:0; top:26%; width:12.5rem; border:1px solid color-mix(in srgb,var(--border-main) 75%,white); border-radius:1.35rem; background:color-mix(in srgb,var(--surface-main) 90%,transparent); padding:1rem; box-shadow:0 16px 42px rgba(4,27,44,.2); backdrop-filter:blur(18px); animation:plan-pulse 6s 1.4s ease-in-out infinite; }
+  .plan-card-top { display:flex; align-items:center; gap:.55rem; color:var(--text-secondary); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+  .plan-icon { display:grid; place-items:center; width:1.75rem; height:1.75rem; border-radius:.6rem; background:color-mix(in srgb,#1279df 12%,transparent); color:#1279df; }
+  .plan-icon svg { width:1rem; stroke-width:1.9; }
+  .plan-time-wrap { position:relative; height:2.5rem; margin-top:.6rem; overflow:hidden; }
+  .plan-time { position:absolute; inset:0; font-size:1.75rem; letter-spacing:-.04em; }
+  .time-before { animation:time-before 6s 1.4s ease-in-out infinite; }
+  .time-after { color:#1279df; animation:time-after 6s 1.4s ease-in-out infinite; }
+  .plan-status { display:inline-flex; margin-top:.15rem; color:#16866a; font-size:.72rem; font-weight:700; }
+  .log-chip,.local-chip { position:absolute; z-index:4; display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-main); border-radius:999px; background:var(--surface-main); box-shadow:0 16px 40px rgba(5,33,52,.16); color:var(--text-primary); font-size:.82rem; font-weight:750; }
+  .log-chip { left:-1%; top:55%; padding:.7rem 1rem; animation:log-arrives 6s 1.4s ease-in-out infinite; }
+  .log-chip span { display:grid; place-items:center; width:1.4rem; height:1.4rem; border-radius:50%; background:#1279df; color:white; }
+  .local-chip { right:5%; bottom:5%; padding:.72rem 1rem; animation:drift-card 6.5s ease-in-out infinite; }
+  .local-chip svg { width:1rem; color:#1279df; stroke-width:1.9; }
+  @keyframes poster-float { 0%,100% { transform:translateX(-50%) translateY(0) rotate(3deg) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)); } 50% { transform:translateX(-50%) translateY(-10px) rotate(2deg) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)); } }
+
+  .fact-item { display:flex; min-height:8.5rem; flex-direction:column; justify-content:center; padding:1.5rem 1rem; border-right:1px solid var(--border-main); }
+  .fact-item:nth-child(2n) { border-right:0; }
+  .fact-item strong { font-size:1rem; }
+  .fact-item span { margin-top:.35rem; color:var(--text-muted); font-size:.8rem; line-height:1.5; }
+  .section-shell { padding:6rem 0; }
+  .feature-shell { overflow:hidden; border-block:1px solid var(--border-main); background:color-mix(in srgb,var(--surface-elevated) 68%,transparent); }
+  .step-grid { position:relative; display:grid; gap:1rem; }
+  .step-card { position:relative; overflow:hidden; min-height:25rem; padding:1.4rem; border:1px solid var(--border-main); border-radius:1.75rem; background:linear-gradient(155deg,color-mix(in srgb,var(--surface-main) 96%,#1279df),var(--surface-main)); box-shadow:0 16px 46px rgba(15,52,78,.06); transition:transform .4s cubic-bezier(.22,1,.36,1),border-color .4s ease,box-shadow .4s ease; }
+  .step-card::after { position:absolute; width:12rem; height:12rem; right:-6rem; bottom:-7rem; border-radius:50%; background:radial-gradient(circle,rgba(54,190,220,.13),transparent 70%); content:''; pointer-events:none; }
+  .step-card:hover { transform:translateY(-7px); border-color:color-mix(in srgb,#1279df 40%,var(--border-main)); box-shadow:0 25px 65px rgba(9,54,86,.13); }
+  .step-heading-row { position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between; }
+  .step-number { color:#1279df; font-size:.76rem; font-weight:850; letter-spacing:.14em; }
+  .step-state { padding:.32rem .55rem; border:1px solid var(--border-main); border-radius:999px; color:var(--text-muted); font-size:.62rem; font-weight:750; letter-spacing:.09em; text-transform:uppercase; }
+  .step-scene { position:relative; z-index:1; height:10.5rem; margin-top:1.15rem; overflow:hidden; border:1px solid color-mix(in srgb,var(--border-main) 82%,transparent); border-radius:1.25rem; background:linear-gradient(145deg,color-mix(in srgb,var(--surface-elevated) 82%,transparent),color-mix(in srgb,#1279df 7%,var(--surface-main))); }
+  .step-card h3 { position:relative; z-index:1; margin-top:1.35rem; font-size:1.45rem; font-weight:820; letter-spacing:-.03em; }
+  .step-card p { position:relative; z-index:1; margin-top:.6rem; color:var(--text-secondary); font-size:.92rem; line-height:1.65; }
+
+  .active-window { position:absolute; inset:1rem 1rem auto; }
+  .scene-label { color:var(--text-muted); font-size:.62rem; font-weight:750; letter-spacing:.09em; text-transform:uppercase; }
+  .active-window>div { display:flex; align-items:center; justify-content:space-between; margin-top:.5rem; }
+  .active-window strong { font-size:1.12rem; letter-spacing:-.03em; }
+  .active-window i { position:relative; flex:1; height:1px; margin-inline:.75rem; background:linear-gradient(90deg,#1279df,#45c4dd); color:transparent; }
+  .active-window i::before,.active-window i::after { position:absolute; top:50%; width:.45rem; height:.45rem; transform:translateY(-50%); border:2px solid var(--surface-elevated); border-radius:50%; background:#33b6dc; box-shadow:0 0 0 3px rgba(18,121,223,.1); content:''; }
+  .active-window i::before { left:0; }
+  .active-window i::after { right:0; }
+  .target-chip { position:absolute; left:1rem; right:1rem; bottom:1rem; display:flex; align-items:center; gap:.7rem; padding:.65rem .75rem; border:1px solid var(--border-main); border-radius:.9rem; background:color-mix(in srgb,var(--surface-main) 88%,transparent); box-shadow:0 10px 25px rgba(7,40,63,.08); animation:scene-rise 5s ease-in-out infinite; }
+  .target-icon { display:grid; place-items:center; width:2rem; height:2rem; border-radius:.7rem; background:color-mix(in srgb,#1279df 13%,transparent); color:#1279df; }
+  .target-icon svg { width:1.15rem; stroke-width:1.8; }
+  .target-chip small,.target-chip strong { display:block; }
+  .target-chip small { color:var(--text-muted); font-size:.58rem; }
+  .target-chip strong { margin-top:.05rem; font-size:.78rem; }
+
+  .scene-cup { position:absolute; left:1.3rem; top:1.1rem; width:4.35rem; color:var(--text-secondary); filter:drop-shadow(0 12px 16px rgba(5,35,55,.12)); }
+  .scene-cup svg { width:100%; }
+  .scene-cup path:first-child { stroke:currentColor; stroke-width:2; }
+  .scene-water { fill:color-mix(in srgb,#1279df 70%,#43c5dd); animation:water-breathe 4s ease-in-out infinite; transform-origin:center bottom; }
+  .scene-log-chip { position:absolute; right:1rem; top:2.4rem; min-width:7rem; padding:.75rem .85rem; border:1px solid color-mix(in srgb,#1279df 30%,var(--border-main)); border-radius:1rem; background:var(--surface-main); box-shadow:0 14px 28px rgba(5,35,55,.12); animation:log-float 4s cubic-bezier(.22,1,.36,1) infinite; }
+  .scene-log-chip strong,.scene-log-chip span { display:block; }
+  .scene-log-chip strong { color:#1279df; font-size:.9rem; }
+  .scene-log-chip span { margin-top:.2rem; color:var(--text-muted); font-size:.58rem; }
+  .scene-ripple { position:absolute; left:1.55rem; bottom:.85rem; width:3.8rem; height:.8rem; border:1px solid rgba(54,185,220,.38); border-radius:50%; animation:ripple-scene 3s ease-out infinite; }
+
+  .scene-reminder { position:absolute; inset:1rem 1rem auto; display:flex; align-items:center; gap:.75rem; padding:.75rem; border:1px solid var(--border-main); border-radius:1rem; background:var(--surface-main); box-shadow:0 12px 28px rgba(5,35,55,.1); }
+  .scene-clock { display:grid; flex:0 0 auto; place-items:center; width:2.2rem; height:2.2rem; border-radius:.75rem; background:color-mix(in srgb,#1279df 13%,transparent); color:#1279df; }
+  .scene-clock svg { width:1.2rem; stroke-width:1.8; }
+  .scene-reminder-copy { min-width:0; flex:1; }
+  .scene-reminder-copy small { display:block; color:var(--text-muted); font-size:.58rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .scene-time-wrap { position:relative; display:block; height:1.5rem; margin-top:.2rem; overflow:hidden; }
+  .scene-time { position:absolute; inset:0; font-size:1rem; }
+  .scene-time-before { animation:time-before 6s ease-in-out infinite; }
+  .scene-time-after { color:#1279df; animation:time-after 6s ease-in-out infinite; }
+  .scene-updated { position:absolute; left:1rem; right:1rem; bottom:1rem; display:flex; align-items:center; gap:.55rem; color:#16866a; font-size:.65rem; font-weight:750; }
+  .scene-updated span { width:.5rem; height:.5rem; border-radius:50%; background:#34bfa3; box-shadow:0 0 0 4px rgba(52,191,163,.12); animation:status-pulse 2s ease-in-out infinite; }
+  @keyframes scene-rise { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-4px); } }
+  @keyframes water-breathe { 0%,100% { transform:scaleY(.9); } 50% { transform:scaleY(1.04); } }
+  @keyframes log-float { 0%,100% { transform:translateY(2px); } 50% { transform:translateY(-5px); } }
+  @keyframes ripple-scene { 0% { transform:scale(.7); opacity:0; } 35% { opacity:1; } 100% { transform:scale(1.35); opacity:0; } }
+  @keyframes status-pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.25); } }
+  .feature-row { display:grid; gap:4rem; align-items:center; }
+  .feature-copy { max-width:35rem; }
+  .benefit-list { display:grid; gap:1.25rem; margin-top:2rem; }
+  .benefit-list li { display:grid; grid-template-columns:2.2rem 1fr; gap:.9rem; }
+  .benefit-list li>span { display:grid; place-items:center; width:2.2rem; height:2.2rem; border-radius:.8rem; background:color-mix(in srgb,#1279df 12%,transparent); color:#1279df; font-size:.68rem; font-weight:850; }
+  .benefit-list strong { font-size:.95rem; }
+  .benefit-list p { margin-top:.2rem; color:var(--text-secondary); font-size:.88rem; line-height:1.55; }
+  .feature-visual { position:relative; min-height:38rem; }
+  .feature-poster { position:absolute; left:50%; top:0; width:min(74%,19rem); }
+  .poster-reminders { transform:translateX(-50%) rotate(-2.5deg); }
+  .poster-history { transform:translateX(-50%) rotate(2.5deg); }
+  .orbit-ring { position:absolute; inset:11% 2% 3%; border:1px dashed color-mix(in srgb,#1279df 38%,transparent); border-radius:50%; animation:orbit-spin 28s linear infinite; }
+  @keyframes orbit-spin { to { transform:rotate(360deg); } }
+  .mini-note { position:absolute; z-index:2; display:flex; align-items:center; gap:.55rem; padding:.7rem .9rem; border:1px solid var(--border-main); border-radius:999px; background:var(--surface-main); box-shadow:0 14px 35px rgba(4,27,44,.14); font-size:.76rem; font-weight:700; }
+  .mini-note span { width:.52rem; height:.52rem; border-radius:50%; background:#34bfa3; box-shadow:0 0 0 4px rgba(52,191,163,.12); }
+  .mini-note-one { left:2%; top:24%; animation:drift-card 6s ease-in-out infinite; }
+  .mini-note-two { right:0; bottom:15%; animation:drift-card 7s .7s ease-in-out infinite; }
+  .metric-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:.65rem; margin-top:2rem; }
+  .metric-strip div { padding:1rem .6rem; border-top:1px solid var(--border-main); }
+  .metric-strip strong { display:block; color:#1279df; font-size:1.55rem; letter-spacing:-.04em; }
+  .metric-strip span { display:block; margin-top:.25rem; color:var(--text-muted); font-size:.7rem; line-height:1.35; }
+  .trend-line { position:absolute; z-index:2; right:-1%; top:28%; width:54%; padding:.7rem; border:1px solid var(--border-main); border-radius:1rem; background:color-mix(in srgb,var(--surface-main) 90%,transparent); box-shadow:0 16px 42px rgba(4,27,44,.14); backdrop-filter:blur(16px); }
+  .trend-line svg { width:100%; }
+  .trend-line path { stroke:#1279df; stroke-width:3; stroke-linecap:round; filter:drop-shadow(0 4px 5px rgba(18,121,223,.24)); stroke-dasharray:300; animation:draw-line 5.5s ease-in-out infinite; }
+  .trend-line circle { fill:#42c5dd; }
+  @keyframes draw-line { 0% { stroke-dashoffset:300; opacity:.2; } 35%,80% { stroke-dashoffset:0; opacity:1; } 100% { stroke-dashoffset:-300; opacity:.2; } }
+  .bento-grid { display:grid; gap:1rem; }
+  .bento-card { min-height:15rem; padding:1.5rem; border:1px solid var(--border-main); border-radius:1.6rem; background:color-mix(in srgb,var(--surface-main) 88%,transparent); transition:transform .35s cubic-bezier(.22,1,.36,1),border-color .35s ease,box-shadow .35s ease; }
+  .bento-card:hover { transform:translateY(-6px); border-color:color-mix(in srgb,#1279df 42%,var(--border-main)); box-shadow:var(--shadow-soft); }
+  .bento-icon { display:grid; place-items:center; width:3rem; height:3rem; border-radius:1rem; background:linear-gradient(140deg,rgba(18,121,223,.17),rgba(57,198,221,.09)); color:#1279df; }
+  .bento-icon svg { width:1.35rem; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .bento-card h3 { margin-top:2.2rem; font-size:1.2rem; font-weight:800; letter-spacing:-.025em; }
+  .bento-card p { margin-top:.55rem; max-width:30rem; color:var(--text-secondary); font-size:.9rem; line-height:1.65; }
+  .privacy-shell { border-block:1px solid var(--border-main); background:linear-gradient(135deg,color-mix(in srgb,var(--surface-elevated) 76%,transparent),color-mix(in srgb,#1279df 7%,var(--bg-main))); }
+  .text-link { display:inline-flex; align-items:center; gap:.4rem; color:#1279df; font-weight:750; }
+  .privacy-panel { position:relative; overflow:hidden; padding:1.25rem; border:1px solid var(--border-main); border-radius:2rem; background:var(--surface-main); box-shadow:var(--shadow-soft); }
+  .privacy-lock { display:grid; place-items:center; width:5rem; height:5rem; margin:.75rem auto 1.25rem; border-radius:1.5rem; background:linear-gradient(145deg,#1279df,#43c4dc); color:white; box-shadow:0 16px 40px rgba(18,121,223,.28); animation:drop-bob 5s ease-in-out infinite; }
+  .privacy-lock svg { width:2.2rem; stroke-width:1.5; }
+  .privacy-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:.75rem; }
+  .privacy-grid div { padding:1rem; border-radius:1.1rem; background:var(--surface-elevated); }
+  .privacy-grid strong,.privacy-grid span { display:block; }
+  .privacy-grid strong { font-size:.85rem; }
+  .privacy-grid span { margin-top:.3rem; color:var(--text-muted); font-size:.72rem; }
+  .faq-list { border-top:1px solid var(--border-main); }
+  .faq-list details { border-bottom:1px solid var(--border-main); }
+  .faq-list summary { position:relative; cursor:pointer; list-style:none; padding:1.4rem 2.5rem 1.4rem 0; font-weight:760; }
+  .faq-list summary::-webkit-details-marker { display:none; }
+  .faq-list summary span::before,.faq-list summary span::after { content:''; position:absolute; right:.4rem; top:50%; width:1rem; height:2px; background:#1279df; transition:transform .25s ease; }
+  .faq-list summary span::after { transform:rotate(90deg); }
+  .faq-list details[open] summary span::after { transform:rotate(0); }
+  .faq-list details p { max-width:42rem; padding:0 2.5rem 1.4rem 0; color:var(--text-secondary); font-size:.92rem; line-height:1.7; }
+  .final-cta { position:relative; overflow:hidden; border:1px solid color-mix(in srgb,#1279df 42%,var(--border-main)); border-radius:2.2rem; padding:4.5rem 1.5rem; background:radial-gradient(circle at 50% 0,rgba(61,198,220,.18),transparent 45%),linear-gradient(140deg,color-mix(in srgb,var(--surface-main) 94%,#1279df),var(--surface-elevated)); text-align:center; box-shadow:var(--shadow-soft); }
+  .final-cta h2 { margin-top:1rem; font-size:clamp(2.4rem,6vw,4.5rem); font-weight:850; letter-spacing:-.055em; line-height:1; }
+  .final-cta>p:not(.eyebrow) { margin:1rem auto 0; color:var(--text-secondary); }
+  .cta-drop { position:absolute; right:7%; top:12%; width:4rem; color:#1279df; opacity:.13; animation:drop-bob 5s ease-in-out infinite; }
+  .cta-drop path { stroke:currentColor; stroke-width:2; }
+
+  @media (min-width:640px) {
+    .step-grid { grid-template-columns:repeat(3,1fr); }
+    .fact-item { padding:1.5rem; }
+    .bento-grid { grid-template-columns:repeat(2,1fr); }
+  }
+  @media (min-width:1024px) {
+    .fact-item:nth-child(2) { border-right:1px solid var(--border-main); }
+    .fact-item:last-child { border-right:0; }
+    .section-shell { padding:8rem 0; }
+    .feature-row { grid-template-columns:1fr 1fr; gap:7rem; }
+    .feature-row-reverse .feature-copy { order:2; }
+    .feature-row-reverse .feature-visual { order:1; }
+    .bento-grid { grid-template-columns:repeat(4,1fr); }
+    .bento-wide { grid-column:span 2; }
+  }
+  @media (max-width:639px) {
+    .motion-stage { min-height:32rem; }
+    .hero-poster { width:68%; }
+    .plan-card { right:0; top:23%; width:10.5rem; padding:.8rem; }
+    .plan-time { font-size:1.42rem; }
+    .log-chip { left:0; top:58%; font-size:.72rem; }
+    .local-chip { right:0; bottom:5%; font-size:.7rem; }
+    .section-shell { padding:5rem 0; }
+    .feature-visual { min-height:33rem; }
+    .mini-note-one { left:0; }
+    .trend-line { right:0; width:58%; }
+    .privacy-grid { grid-template-columns:1fr; }
+    .metric-strip { gap:.2rem; }
+  }
+</style>
