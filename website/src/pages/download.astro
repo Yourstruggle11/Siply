@@ -5,7 +5,10 @@ import Footer from '../components/Footer.astro';
 import { RELEASES } from '../config';
 ---
 
-<Layout title="Download Siply">
+<Layout
+  title={`Download Siply ${RELEASES.latestAndroidVersion}`}
+  description={`Download Siply ${RELEASES.latestAndroidVersion} for Android. Local-first hydration tracking with reliable smart reminders.`}
+>
   <Header />
   
   <main class="flex-1 bg-[var(--bg-main)] py-12 md:py-20">
