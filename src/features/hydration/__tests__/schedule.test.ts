@@ -230,6 +230,26 @@ describe("computeReminderSchedule — deduplication", () => {
 });
 
 describe("computeReminderSchedule — edge cases", () => {
+  it("keeps base-reminder coverage through tomorrow's complete active window", () => {
+    const now = today(6, 25);
+    const schedule = computeReminderSchedule(
+      now,
+      makeSettings({ windowStart: "07:00", windowEnd: "23:00", targetLiters: 3 }),
+      0
+    );
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowSlots = schedule.slots.filter(
+      (slot) => slot.time.getFullYear() === tomorrow.getFullYear()
+        && slot.time.getMonth() === tomorrow.getMonth()
+        && slot.time.getDate() === tomorrow.getDate()
+    );
+
+    expect(tomorrowSlots.length).toBeGreaterThan(0);
+    expect(tomorrowSlots.at(-1)?.time.getHours()).toBe(22);
+    expect(tomorrowSlots.at(-1)?.time.getMinutes()).toBe(30);
+  });
+
   it("handles window that hasn't started yet", () => {
     const settings = makeSettings({ windowStart: "22:00", windowEnd: "23:00" });
     const schedule = computeReminderSchedule(today(8, 0), settings, 0);

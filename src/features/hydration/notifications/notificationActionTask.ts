@@ -31,23 +31,30 @@ export const handleBackgroundNotificationAction = async (
     return;
   }
 
-  const familyId = resolveNotificationFamilyId(
-    notificationId,
-    notification.request.content.data
-  );
-  if (actionIdentifier === NOTIFICATION_ACTION_SKIP) {
-    if (familyId) {
-      await markReminderFamilyHandled(familyId, "skipped");
+  try {
+    const familyId = resolveNotificationFamilyId(
+      notificationId,
+      notification.request.content.data
+    );
+    if (actionIdentifier === NOTIFICATION_ACTION_SKIP) {
+      if (familyId) {
+        await markReminderFamilyHandled(familyId, "skipped");
+      }
+      return;
     }
-    return;
-  }
 
-  const amount = parseSiplyNotificationId(notificationId)?.ml;
-  const snapshot = await readPersistedHydrationSnapshot();
-  if (!snapshot || typeof amount !== "number" || amount <= 0) return;
-  await snoozeNotification(amount, snapshot.settings);
-  if (familyId) {
-    await markReminderFamilyHandled(familyId, "snoozed");
+    const amount = parseSiplyNotificationId(notificationId)?.ml;
+    const snapshot = await readPersistedHydrationSnapshot();
+    if (!snapshot || typeof amount !== "number" || amount <= 0) {
+      throw new Error("Hydration state was unavailable for snooze");
+    }
+    const scheduled = await snoozeNotification(amount, snapshot.settings, familyId);
+    if (familyId) {
+      await markReminderFamilyHandled(familyId, scheduled ? "snoozed" : "skipped");
+    }
+  } catch (error) {
+    await notificationActionDeduplicator.release(notificationId);
+    throw error;
   }
 };
 
@@ -64,5 +71,7 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(
 
 export const registerBackgroundNotificationActions = async () => {
   if (Platform.OS !== "android") return;
-  await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_ACTION_TASK);
+  if (!(await TaskManager.isTaskRegisteredAsync(BACKGROUND_NOTIFICATION_ACTION_TASK))) {
+    await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_ACTION_TASK);
+  }
 };

@@ -19,6 +19,10 @@ export type NotificationDiagnosticEvent =
       desiredCount: number;
       scheduledCount: number;
       failedCount: number;
+      plannedCount?: number;
+      suppressedOptionalCount?: number;
+      suppressedBaseCount?: number;
+      extraneousCount?: number;
       health: string;
       urgencyMode: boolean;
       weekendAdjustmentMinutes: number;

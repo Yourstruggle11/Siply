@@ -78,7 +78,14 @@ export const computeReminderSchedule = (
   lastLogAt?: string | null,
   options: ReminderScheduleOptions = {}
 ): ScheduleResult => {
-  if (!settings || settings.sipMl <= 0 || settings.targetLiters <= 0) {
+  if (
+    !settings ||
+    !Number.isFinite(settings.sipMl) ||
+    !Number.isFinite(settings.targetLiters) ||
+    !Number.isFinite(consumedMl) ||
+    settings.sipMl <= 0 ||
+    settings.targetLiters <= 0
+  ) {
     return { slots: [], targetMet: false, status: "config_error" };
   }
 
@@ -89,11 +96,10 @@ export const computeReminderSchedule = (
 
   const targetMl = litersToMl(settings.targetLiters);
   const targetMet = consumedMl >= targetMl;
-  // Reserve capacity for up to two hydration dates in the rolling horizon,
-  // their summaries, and every allowed nudge. Base reminders always remain
-  // schedulable; nudges never crowd out the core plan.
+  // Reserve capacity for base reminders across today and tomorrow. Optional
+  // nudges are capacity-selected by the notifier after every base reminder,
+  // so they can never displace the core plan.
   const maxBase = getMaxBaseReminderCount(settings);
-  const horizonEnd = addMinutes(now, 24 * 60);
   const todayKey = getDateKey(now);
   const lastLog = validLastLog(lastLogAt, todayKey);
   const quietUntil = lastLog ? addMinutes(lastLog, POST_LOG_QUIET_MINUTES) : null;
@@ -106,7 +112,7 @@ export const computeReminderSchedule = (
       windowStart = addMinutes(windowStart, Math.max(0, options.weekendShiftMinutes ?? 0));
     }
     const windowEnd = setTimeOnDate(date, settings.windowEnd);
-    if (windowEnd <= windowStart || windowEnd <= now || windowStart > horizonEnd) continue;
+    if (windowEnd <= windowStart || windowEnd <= now) continue;
 
     const dateKey = getDateKey(windowStart);
     const isToday = dateKey === todayKey;
@@ -150,7 +156,6 @@ export const computeReminderSchedule = (
     if (
       closeoutStart >= windowStart &&
       closeoutStart > earliest &&
-      closeoutStart <= horizonEnd &&
       times.length < remainingCapacity
     ) {
       const previous = times[times.length - 1];
@@ -159,7 +164,7 @@ export const computeReminderSchedule = (
       if (gapOkay && logGapOkay) times.push(closeoutStart);
     }
 
-    times = times.filter((time) => time > now && time <= horizonEnd);
+    times = times.filter((time) => time > now);
     times.forEach((time, index) => {
       const opportunitiesLeft = Math.max(1, times.length - index);
       const mlPerReminder = Math.min(

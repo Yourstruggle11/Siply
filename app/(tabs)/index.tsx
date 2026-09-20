@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
 import { Screen } from "../../src/shared/components/Screen";
 import { AnimatedCard } from "../../src/shared/components/AnimatedCard";
@@ -49,7 +49,6 @@ export default function HomeScreen() {
   const history = useHydrationStore((s) => s.history);
   const undoLastLog = useHydrationStore((s) => s.undoLastLog);
   const { permission, requestPermission, openSettings } = useNotificationPermission();
-  const requestedRef = useRef(false);
   const plan = useHydrationPlan();
   const [showAddAmount, setShowAddAmount] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
@@ -110,13 +109,6 @@ export default function HomeScreen() {
     if (plan.targetMl <= 0) return 0;
     return Math.min(1, plan.consumedMl / plan.targetMl);
   }, [plan.consumedMl, plan.targetMl]);
-
-  useEffect(() => {
-    if (!permission || permission.granted || !permission.canAskAgain) return;
-    if (requestedRef.current) return;
-    requestedRef.current = true;
-    void requestPermission();
-  }, [permission, requestPermission]);
 
   useEffect(() => {
     if (!permission) return;
@@ -280,10 +272,22 @@ export default function HomeScreen() {
           </AnimatedCard>
         ) : null}
 
-        {plan.reminderHealth === "schedule_failed" && permission?.granted ? (
+        {plan.reminderHealth === "channel_blocked" && permission?.granted ? (
+          <AnimatedCard style={styles.alertCard} delay={100}>
+            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary, ...theme.typography.titleMedium }]}>Reminder channel is off</Text>
+            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Android is blocking Siply reminders for the selected sound setting. Re-enable the reminder channel in system settings.</Text>
+            <Button label="Open notification settings" variant="secondary" onPress={openSettings} />
+          </AnimatedCard>
+        ) : null}
+
+        {(plan.reminderHealth === "schedule_failed" || plan.reminderHealth === "partially_scheduled") && permission?.granted ? (
           <AnimatedCard style={styles.alertCard} delay={100}>
             <Text style={[styles.alertTitle, { color: theme.colors.textPrimary, ...theme.typography.titleMedium }]}>Restoring reminders</Text>
-            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Reminders are temporarily unavailable. Siply is retrying automatically.</Text>
+            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>
+              {plan.reminderHealth === "partially_scheduled"
+                ? "Some reminders are available. Siply is restoring the rest automatically."
+                : "Reminders are temporarily unavailable. Siply is retrying automatically."}
+            </Text>
           </AnimatedCard>
         ) : null}
 
@@ -402,7 +406,7 @@ export default function HomeScreen() {
                  ? (plan.nextReminderAt.getDate() !== new Date().getDate() 
                      ? `Tomorrow, ${formatTimeForDisplay(plan.nextReminderAt)}` 
                      : formatTimeForDisplay(plan.nextReminderAt)) 
-                 : plan.reminderHealth === "schedule_failed"
+                 : plan.reminderHealth === "schedule_failed" || plan.reminderHealth === "partially_scheduled"
                    ? "Restoring automatically"
                    : "Not scheduled"}
              </Text>

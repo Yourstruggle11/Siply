@@ -82,5 +82,5 @@ export type HydrationPlan = {
   targetMet: boolean;
   remainingMl: number;
   consumedMl: number;
-  reminderHealth?: "scheduled" | "partially_scheduled" | "schedule_failed" | "target_met" | "outside_window" | "day_complete" | "invalid_window";
+  reminderHealth?: "scheduled" | "partially_scheduled" | "schedule_failed" | "target_met" | "outside_window" | "day_complete" | "invalid_window" | "channel_blocked";
 };

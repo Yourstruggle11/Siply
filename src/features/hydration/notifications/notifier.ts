@@ -8,10 +8,11 @@ import {
   NOTIFICATION_ACTION_SNOOZE,
   NOTIFICATION_ACTION_VIEW_HISTORY,
   NOTIFICATION_CATEGORY_ID,
+  NOTIFICATION_CATEGORY_NO_SNOOZE_ID,
   NOTIFICATION_CATEGORY_SUMMARY_ID,
   NUDGE_MINUTES,
 } from "../../../core/constants";
-import { addDays, addMinutes, setTimeOnDate } from "../../../core/time";
+import { addDays, addMinutes, getDateKey, setTimeOnDate } from "../../../core/time";
 import { computeSipsPerReminder, getWindowMinutes } from "../domain/calculations";
 import type { ReminderPhase } from "../domain/schedule";
 import type { HydrationSettings, ReminderTone } from "../domain/types";
@@ -57,6 +58,11 @@ export type NotificationApplyResult = {
   verifiedFamilyIds: string[];
   pendingFamilyIds: string[];
   errors: string[];
+  plannedCount: number;
+  suppressedOptionalCount: number;
+  suppressedBaseCount: number;
+  extraneousIds: string[];
+  channelBlocked: boolean;
 };
 
 export type TestNotificationResult = {
@@ -90,7 +96,7 @@ const formatReminderBody = (ml: number, sips: number, tone: ReminderTone = "enco
   getRandomMessage(messagePool(tone)).replace("{ml}", String(ml)).replace("{sips}", String(sips));
 
 const formatNudgeBody = (ml: number, sips: number, tone: ReminderTone, final: boolean) => {
-  const body = formatReminderBody(ml, final ? 1 : sips, tone);
+  const body = formatReminderBody(ml, sips, tone);
   if (tone === "minimal") return body;
   return final ? `Final reminder: ${body}` : `Reminder: ${body}`;
 };
@@ -147,10 +153,15 @@ export const parseSiplyNotificationId = (identifier?: string) => {
   if (!["reminder", "nudge", "test", "snooze", "summary"].includes(kind)) return null;
   const timeMs = Number.parseInt(parts[kindIndex + 1], 10);
   const mlRaw = Number.parseInt(parts[kindIndex + 2], 10);
+  const nudgeOffsetRaw = kind === "nudge" ? Number.parseInt(parts[kindIndex + 3], 10) : undefined;
   const baseTime = kind === "nudge" ? Number.parseInt(parts[kindIndex + 4], 10) : timeMs;
   return {
     kind,
+    timeMs: Number.isFinite(timeMs) ? timeMs : undefined,
     ml: Number.isFinite(mlRaw) ? mlRaw : undefined,
+    nudgeOffset: typeof nudgeOffsetRaw === "number" && Number.isFinite(nudgeOffsetRaw)
+      ? nudgeOffsetRaw
+      : undefined,
     familyId: (kind === "reminder" || kind === "nudge") && Number.isFinite(baseTime)
       ? `siply-family-${baseTime}`
       : undefined,
@@ -214,6 +225,14 @@ export const configureNotificationActions = async () => {
     ],
     Platform.OS === "ios" ? { customDismissAction: true } : undefined
   );
+  await Notifications.setNotificationCategoryAsync(
+    NOTIFICATION_CATEGORY_NO_SNOOZE_ID,
+    [
+      { identifier: NOTIFICATION_ACTION_LOG, buttonTitle: "I drank", options: { opensAppToForeground: true } },
+      { identifier: NOTIFICATION_ACTION_SKIP, buttonTitle: "Skip", options: { opensAppToForeground: Platform.OS === "ios" } },
+    ],
+    Platform.OS === "ios" ? { customDismissAction: true } : undefined
+  );
   await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORY_SUMMARY_ID, [
     { identifier: NOTIFICATION_ACTION_VIEW_HISTORY, buttonTitle: "View History", options: { opensAppToForeground: true } },
   ]);
@@ -241,7 +260,7 @@ const buildDesiredNotifications = (
   const channelId = getChannelId(settings.soundEnabled);
 
   slots.forEach((slot) => {
-    if (slot.time <= now || handledFamilies.has(slot.familyId)) return;
+    if (handledFamilies.has(slot.familyId)) return;
     const commonData = {
       siplyKind: "reminder",
       familyId: slot.familyId,
@@ -249,26 +268,34 @@ const buildDesiredNotifications = (
       ml: slot.mlPerReminder,
     };
     const identifier = buildId("reminder", slot.time, slot.mlPerReminder);
-    desired.push({
-      identifier,
-      familyId: slot.familyId,
-      kind: "reminder",
-      request: {
+    const reminderCategory = addMinutes(slot.time, 30) >= slot.windowEnd
+      ? NOTIFICATION_CATEGORY_NO_SNOOZE_ID
+      : NOTIFICATION_CATEGORY_ID;
+    if (slot.time > now) {
+      desired.push({
         identifier,
-        content: buildContent(
-          formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder, settings.tone),
-          settings.soundEnabled,
-          NOTIFICATION_CATEGORY_ID,
-          commonData
-        ),
-        trigger: buildTrigger(slot.time, channelId),
-      },
-    });
+        familyId: slot.familyId,
+        kind: "reminder",
+        request: {
+          identifier,
+          content: buildContent(
+            formatReminderBody(slot.mlPerReminder, slot.sipsPerReminder, settings.tone),
+            settings.soundEnabled,
+            reminderCategory,
+            commonData
+          ),
+          trigger: buildTrigger(slot.time, channelId),
+        },
+      });
+    }
 
     slot.nudgeOffsets.forEach((offset, index) => {
       const nudgeTime = addMinutes(slot.time, offset);
       if (nudgeTime >= slot.windowEnd || nudgeTime <= now) return;
       const nudgeId = buildId("nudge", nudgeTime, slot.mlPerReminder, `${offset}:${slot.time.getTime()}`);
+      const nudgeCategory = addMinutes(nudgeTime, 30) >= slot.windowEnd
+        ? NOTIFICATION_CATEGORY_NO_SNOOZE_ID
+        : NOTIFICATION_CATEGORY_ID;
       desired.push({
         identifier: nudgeId,
         familyId: slot.familyId,
@@ -278,7 +305,7 @@ const buildDesiredNotifications = (
           content: buildContent(
             formatNudgeBody(slot.mlPerReminder, slot.sipsPerReminder, settings.tone ?? "encouraging", index === slot.nudgeOffsets.length - 1),
             settings.soundEnabled,
-            NOTIFICATION_CATEGORY_ID,
+            nudgeCategory,
             { ...commonData, siplyKind: "nudge", nudgeOffset: offset }
           ),
           trigger: buildTrigger(nudgeTime, channelId),
@@ -287,11 +314,10 @@ const buildDesiredNotifications = (
     });
   });
 
-  const horizonEnd = addMinutes(now, 24 * 60);
   const windowEnds = getWindowMinutes(settings) > 0 ? [0, 1]
     .map((offset) => setTimeOnDate(addDays(now, offset), settings.windowEnd).getTime())
     .filter((timeMs, index, values) => values.indexOf(timeMs) === index)
-    .filter((timeMs) => timeMs > now.getTime() && timeMs <= horizonEnd.getTime())
+    .filter((timeMs) => timeMs > now.getTime())
     .sort() : [];
   windowEnds.forEach((timeMs) => {
     const summaryTime = new Date(timeMs);
@@ -321,16 +347,82 @@ const buildDesiredNotifications = (
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 
+const delay = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
 const scheduleWithRetry = async (request: Notifications.NotificationRequestInput) => {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       return await Notifications.scheduleNotificationAsync(request);
     } catch (error) {
       lastError = error;
+      if (attempt === 0) await delay(100);
     }
   }
   throw lastError;
+};
+
+const cancelWithRetry = async (identifier: string) => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(identifier);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await delay(100);
+    }
+  }
+  throw lastError;
+};
+
+const runBounded = async <T, R>(items: T[], worker: (item: T) => Promise<R>, concurrency = 4) => {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = { status: "fulfilled", value: await worker(items[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  });
+  await Promise.all(runners);
+  return results;
+};
+
+const compactErrors = (errors: string[]) => {
+  const counts = new Map<string, number>();
+  errors.forEach((message) => counts.set(message, (counts.get(message) ?? 0) + 1));
+  return Array.from(counts, ([message, count]) => count > 1 ? `${message} (${count}x)` : message);
+};
+
+const prioritizeDesired = (items: DesiredNotification[], now: Date) => {
+  const todayKey = getDateKey(now);
+  const priority = (item: DesiredNotification) => {
+    if (item.kind === "reminder") return 0;
+    if (item.kind === "nudge") {
+      const parsed = parseSiplyNotificationId(item.identifier);
+      return parsed?.timeMs && getDateKey(new Date(parsed.timeMs)) === todayKey ? 1 : 3;
+    }
+    if (item.kind === "summary") return 2;
+    return 4;
+  };
+  return [...items].sort((a, b) => priority(a) - priority(b));
+};
+
+const getChannelBlocked = async (settings: HydrationSettings) => {
+  if (Platform.OS !== "android") return false;
+  try {
+    const getChannel = Notifications.getNotificationChannelAsync;
+    if (typeof getChannel !== "function") return false;
+    const channel = await getChannel(getChannelId(settings.soundEnabled));
+    return channel?.importance === 0;
+  } catch {
+    return false;
+  }
 };
 
 const extractPendingFamilyIds = (requests: Notifications.NotificationRequest[]) =>
@@ -344,10 +436,12 @@ export const applyNotificationPlan = async (
   settings: HydrationSettings,
   slots: NotificationPlanSlot[],
   now = new Date(),
-  handledFamilyIds: string[] = []
+  handledFamilyIds: string[] = [],
+  options: { reinstallExisting?: boolean } = {}
 ): Promise<NotificationApplyResult> => {
-  const errors: string[] = [];
-  let desired = buildDesiredNotifications(settings, slots, now, new Set(handledFamilyIds));
+  const rawErrors: string[] = [];
+  const handled = new Set(handledFamilyIds);
+  const planned = prioritizeDesired(buildDesiredNotifications(settings, slots, now, handled), now);
   let before: Notifications.NotificationRequest[];
   try {
     before = await Notifications.getAllScheduledNotificationsAsync();
@@ -355,15 +449,20 @@ export const applyNotificationPlan = async (
     return {
       success: false,
       status: "failed",
-      requested: desired.length,
+      requested: planned.length,
       scheduled: 0,
-      failed: desired.length,
-      desiredCount: desired.length,
+      failed: planned.length,
+      desiredCount: planned.length,
       pendingIds: [],
       verifiedBaseIds: [],
       verifiedFamilyIds: [],
       pendingFamilyIds: [],
       errors: [errorMessage(error)],
+      plannedCount: planned.length,
+      suppressedOptionalCount: 0,
+      suppressedBaseCount: 0,
+      extraneousIds: [],
+      channelBlocked: false,
     };
   }
 
@@ -371,11 +470,31 @@ export const applyNotificationPlan = async (
   const transientPendingCount = before.filter(
     (item) => !isManagedPlanNotification(item.identifier)
   ).length;
-  desired = desired.slice(
-    0,
-    Math.max(0, Math.min(MAX_NOTIFICATIONS_PER_DAY, platformLimit) - transientPendingCount)
-  );
+  const capacity = Math.max(0, Math.min(MAX_NOTIFICATIONS_PER_DAY, platformLimit) - transientPendingCount);
+  const desired = planned.slice(0, capacity);
+  const suppressed = planned.slice(capacity);
+  const suppressedBaseCount = suppressed.filter((item) => item.kind === "reminder").length;
+  const suppressedOptionalCount = suppressed.length - suppressedBaseCount;
   const desiredIds = new Set(desired.map((item) => item.identifier));
+  const oldManaged = before.filter((item) => isManagedPlanNotification(item.identifier));
+
+  const plannedCurrentBase = planned.some((item) => {
+    if (item.kind !== "reminder") return false;
+    const timeMs = parseSiplyNotificationId(item.identifier)?.timeMs;
+    return Boolean(timeMs && getDateKey(new Date(timeMs)) === getDateKey(now));
+  });
+  const safetyObsolete = oldManaged.filter((item) => {
+    if (desiredIds.has(item.identifier)) return false;
+    const meta = parseSiplyNotificationId(item.identifier);
+    if (meta?.familyId && handled.has(meta.familyId)) return true;
+    if (meta?.kind === "nudge" && !settings.escalationEnabled) return true;
+    return Boolean(
+      !plannedCurrentBase &&
+      (meta?.kind === "reminder" || meta?.kind === "nudge") &&
+      meta.timeMs &&
+      getDateKey(new Date(meta.timeMs)) === getDateKey(now)
+    );
+  });
 
   try {
     await ensureNotificationChannels();
@@ -392,32 +511,97 @@ export const applyNotificationPlan = async (
       verifiedFamilyIds: [],
       pendingFamilyIds: extractPendingFamilyIds(before),
       errors: [errorMessage(error)],
+      plannedCount: planned.length,
+      suppressedOptionalCount,
+      suppressedBaseCount,
+      extraneousIds: oldManaged.map((item) => item.identifier),
+      channelBlocked: false,
     };
   }
 
-  const existingIds = new Set(before.map((item) => item.identifier));
-  const missing = desired.filter((item) => !existingIds.has(item.identifier));
-  const addResults = await Promise.allSettled(missing.map((item) => scheduleWithRetry(item.request)));
+  let workingBefore = before;
+  let existingIds = new Set(workingBefore.map((item) => item.identifier));
+  let missing = desired.filter((item) => !existingIds.has(item.identifier));
+  const availableWithoutRemoval = Math.max(0, Math.min(MAX_NOTIFICATIONS_PER_DAY, platformLimit) - workingBefore.length);
+  const capacityShortfall = Math.max(0, missing.length - availableWithoutRemoval);
+  let capacityTransition = false;
+  if (capacityShortfall > 0) {
+    // The old and new plans cannot coexist at peak capacity. Free only
+    // obsolete requests, preferring optional notifications and far-future
+    // reminders so the nearest existing reminder remains protected longest.
+    const capacityCandidates = oldManaged
+      .filter((item) => !desiredIds.has(item.identifier))
+      .sort((a, b) => {
+        const aMeta = parseSiplyNotificationId(a.identifier);
+        const bMeta = parseSiplyNotificationId(b.identifier);
+        const aOptional = aMeta?.kind === "reminder" ? 1 : 0;
+        const bOptional = bMeta?.kind === "reminder" ? 1 : 0;
+        if (aOptional !== bOptional) return aOptional - bOptional;
+        return (bMeta?.timeMs ?? 0) - (aMeta?.timeMs ?? 0);
+      })
+      .slice(0, capacityShortfall);
+    const capacityResults = await runBounded(capacityCandidates, (item) => cancelWithRetry(item.identifier));
+    capacityResults.forEach((result) => {
+      if (result.status === "rejected") rawErrors.push(`Capacity cleanup failed: ${errorMessage(result.reason)}`);
+    });
+    capacityTransition = capacityCandidates.length > 0;
+    try {
+      workingBefore = await Notifications.getAllScheduledNotificationsAsync();
+      existingIds = new Set(workingBefore.map((item) => item.identifier));
+      missing = desired.filter((item) => !existingIds.has(item.identifier));
+    } catch (error) {
+      rawErrors.push(`Could not verify capacity cleanup: ${errorMessage(error)}`);
+    }
+  }
+  const attempted = options.reinstallExisting ? desired : missing;
+  const addResults = await runBounded(attempted, (item) => scheduleWithRetry(item.request));
   addResults.forEach((result) => {
-    if (result.status === "rejected") errors.push(errorMessage(result.reason));
+    if (result.status === "rejected") rawErrors.push(errorMessage(result.reason));
   });
 
-  let afterAdd = await Notifications.getAllScheduledNotificationsAsync().catch(() => before);
+  let afterAdd: Notifications.NotificationRequest[];
+  try {
+    afterAdd = await Notifications.getAllScheduledNotificationsAsync();
+  } catch (error) {
+    rawErrors.push(`Could not verify scheduled notifications: ${errorMessage(error)}`);
+    afterAdd = workingBefore;
+  }
   const afterAddIds = new Set(afterAdd.map((item) => item.identifier));
   const stillMissing = desired.filter((item) => !afterAddIds.has(item.identifier));
 
-  // Never remove an older usable plan unless all replacements were accepted.
-  if (stillMissing.length === 0) {
-    const obsolete = afterAdd.filter(
-      (item) => isManagedPlanNotification(item.identifier) && !desiredIds.has(item.identifier)
-    );
-    const cancelResults = await Promise.allSettled(
-      obsolete.map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier))
-    );
-    cancelResults.forEach((result) => {
-      if (result.status === "rejected") errors.push(errorMessage(result.reason));
+  // Safety cancellations are preference/state removals, not replacement
+  // cleanup. They must be attempted even when a new plan cannot be installed.
+  const safetyResults = await runBounded(safetyObsolete, (item) => cancelWithRetry(item.identifier));
+  safetyResults.forEach((result) => {
+    if (result.status === "rejected") rawErrors.push(errorMessage(result.reason));
+  });
+
+  let transactionRolledBack = false;
+  if (stillMissing.length > 0 && oldManaged.length > 0 && !capacityTransition) {
+    // A half-installed replacement is worse than the last coherent plan. Roll
+    // back only identifiers that were genuinely new; resubmissions with an
+    // existing identifier leave the prior request as the fallback.
+    const newlyAdded = missing.filter((item) => afterAddIds.has(item.identifier));
+    const rollbackResults = await runBounded(newlyAdded, (item) => cancelWithRetry(item.identifier));
+    rollbackResults.forEach((result) => {
+      if (result.status === "rejected") rawErrors.push(`Rollback failed: ${errorMessage(result.reason)}`);
     });
-    afterAdd = await Notifications.getAllScheduledNotificationsAsync().catch(() => afterAdd);
+    transactionRolledBack = true;
+  } else if (stillMissing.length === 0) {
+    const obsolete = afterAdd.filter(
+      (item) => isManagedPlanNotification(item.identifier) && !desiredIds.has(item.identifier) &&
+        !safetyObsolete.some((safe) => safe.identifier === item.identifier)
+    );
+    const cancelResults = await runBounded(obsolete, (item) => cancelWithRetry(item.identifier));
+    cancelResults.forEach((result) => {
+      if (result.status === "rejected") rawErrors.push(errorMessage(result.reason));
+    });
+  }
+
+  try {
+    afterAdd = await Notifications.getAllScheduledNotificationsAsync();
+  } catch (error) {
+    rawErrors.push(`Could not verify final notification queue: ${errorMessage(error)}`);
   }
 
   const finalIds = new Set(afterAdd.map((item) => item.identifier));
@@ -430,12 +614,24 @@ export const applyNotificationPlan = async (
     .map((item) => item.familyId!);
   const pendingFamilyIds = extractPendingFamilyIds(afterAdd);
   const failed = desired.length - verified.length;
-  const success = failed === 0 && errors.length === 0;
+  const extraneousIds = afterAdd
+    .filter((item) => isManagedPlanNotification(item.identifier) && !desiredIds.has(item.identifier))
+    .map((item) => item.identifier);
+  const errors = compactErrors(rawErrors);
+  const channelBlocked = await getChannelBlocked(settings);
+  const success = !transactionRolledBack && failed === 0 && errors.length === 0 && extraneousIds.length === 0;
+  const status = transactionRolledBack
+    ? "failed"
+    : success && suppressedBaseCount === 0
+      ? "verified"
+      : verifiedBaseIds.length
+        ? "partial"
+        : "failed";
 
   return {
     success,
-    status: success ? "verified" : verifiedBaseIds.length ? "partial" : "failed",
-    requested: missing.length,
+    status,
+    requested: attempted.length,
     scheduled: verified.length,
     failed,
     desiredCount: desired.length,
@@ -444,6 +640,11 @@ export const applyNotificationPlan = async (
     verifiedFamilyIds,
     pendingFamilyIds,
     errors,
+    plannedCount: planned.length,
+    suppressedOptionalCount,
+    suppressedBaseCount,
+    extraneousIds,
+    channelBlocked,
   };
 };
 
@@ -453,6 +654,7 @@ export const cancelNotificationFamily = async (familyId: string) => {
     (item) => resolveNotificationFamilyId(item.identifier, item.content.data) === familyId
   );
   await Promise.all(family.map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier)));
+  return family.length;
 };
 
 export const sendTestNotificationDetailed = async (): Promise<TestNotificationResult> => {
@@ -480,13 +682,17 @@ export const sendTestNotificationDetailed = async (): Promise<TestNotificationRe
         pendingCount: pending.length,
       };
     }
-    const triggerDate = new Date(Date.now() + 1000);
+    const triggerDate = new Date(Date.now() + 3000);
     const identifier = buildId("test", triggerDate);
     await Notifications.scheduleNotificationAsync({
       identifier,
       content: buildContent("Test reminder: Drink 200 ml (13 sips)", true),
       trigger: buildTrigger(triggerDate, getChannelId(true)),
     });
+    const verified = await Notifications.getAllScheduledNotificationsAsync();
+    if (!verified.some((item) => item.identifier === identifier)) {
+      throw new Error("The native scheduler did not retain the test notification.");
+    }
     await recordTestDiagnostics({ at: new Date().toISOString(), success: true }).catch(() => {});
     return {
       success: true,
@@ -514,13 +720,25 @@ export const snoozeNotification = async (
   familyId?: string
 ) => {
   await ensureNotificationChannels();
+  const now = new Date();
+  const snoozeTime = addMinutes(now, 30);
+  const windowEnd = setTimeOnDate(now, settings.windowEnd);
+  if (getWindowMinutes(settings) <= 0 || snoozeTime >= windowEnd) {
+    return false;
+  }
+  const familyTime = familyId ? Number.parseInt(familyId.replace("siply-family-", ""), 10) : Number.NaN;
+  const identifierTime = Number.isFinite(familyTime) ? new Date(familyTime) : snoozeTime;
+  const snoozeId = buildId("snooze", identifierTime, mlPerReminder, "30");
+  // The delivered reminder no longer needs its follow-ups. Clear that family
+  // before checking capacity so a full queue cannot make a valid Snooze fail
+  // merely because the very notifications it replaces are still pending.
+  if (familyId) await cancelNotificationFamily(familyId);
   const pending = await Notifications.getAllScheduledNotificationsAsync();
-  if (pending.length >= MAX_NOTIFICATIONS_PER_DAY) {
+  if (pending.length >= MAX_NOTIFICATIONS_PER_DAY && !pending.some((item) => item.identifier === snoozeId)) {
     throw new Error("Notification capacity is temporarily full");
   }
-  const snoozeTime = addMinutes(new Date(), 30);
   await Notifications.scheduleNotificationAsync({
-    identifier: buildId("snooze", snoozeTime, mlPerReminder),
+    identifier: snoozeId,
     content: buildContent(
       formatReminderBody(mlPerReminder, computeSipsPerReminder(mlPerReminder, settings.sipMl), settings.tone),
       settings.soundEnabled,
@@ -529,5 +747,5 @@ export const snoozeNotification = async (
     ),
     trigger: buildTrigger(snoozeTime, getChannelId(settings.soundEnabled)),
   });
-  if (familyId) await cancelNotificationFamily(familyId);
+  return true;
 };

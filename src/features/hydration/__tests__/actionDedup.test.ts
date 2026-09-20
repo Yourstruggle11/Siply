@@ -77,4 +77,13 @@ describe("NotificationActionDeduplicator", () => {
 
     await expect(dedup.claimIfUnhandled("expired")).resolves.toBe(true);
   });
+
+  it("allows a failed action to be retried after its claim is released", async () => {
+    const storage = createStorage();
+    const dedup = new NotificationActionDeduplicator(storage, () => NOW);
+
+    await expect(dedup.claimIfUnhandled("retryable")).resolves.toBe(true);
+    await dedup.release("retryable");
+    await expect(dedup.claimIfUnhandled("retryable")).resolves.toBe(true);
+  });
 });

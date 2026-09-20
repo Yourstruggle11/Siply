@@ -2,11 +2,8 @@ import { parseTimeToMinutes } from "../../../core/time";
 import {
   MAX_NOTIFICATIONS_PER_DAY,
   MIN_INTERVAL_MINUTES,
-  NORMAL_NUDGE_FAMILIES_PER_DAY,
-  NUDGE_MINUTES,
   REMINDER_TARGET_ML,
   TRANSIENT_NOTIFICATION_RESERVE,
-  URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY,
 } from "../../../core/constants";
 import { HydrationSettings } from "./types";
 
@@ -70,15 +67,14 @@ export const computeHydrationPlan = (
   });
 };
 
-export const getMaxBaseReminderCount = (settings: HydrationSettings) => {
-  const reservedForNudges = settings.escalationEnabled
-    ? (NORMAL_NUDGE_FAMILIES_PER_DAY + URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY)
-      * NUDGE_MINUTES.length
-      * 2
-    : 0;
+export const getMaxBaseReminderCount = (_settings: HydrationSettings) => {
+  // Core reminders are capacity-critical. Optional nudges are selected later
+  // from whatever capacity remains, so they can never crowd out tomorrow's
+  // base coverage. Reserve two end-of-window summaries and a small transient
+  // allowance for tests/snoozes/other local notifications.
   return Math.max(
     1,
-    MAX_NOTIFICATIONS_PER_DAY - TRANSIENT_NOTIFICATION_RESERVE - reservedForNudges - 2
+    MAX_NOTIFICATIONS_PER_DAY - TRANSIENT_NOTIFICATION_RESERVE - 2
   );
 };
 

@@ -18,7 +18,7 @@ export const runBackgroundNotificationTask = async () => {
 
     // Unchanged live inputs verify/repair the existing OS plan. The background
     // worker never shifts reminder times merely because time has passed.
-    await reconcile({
+    const result = await reconcile({
       settings: snapshot.settings,
       consumedMl: snapshot.progress.consumedMl,
       lastLogAt: snapshot.quickLog.lastLogAt,
@@ -26,14 +26,18 @@ export const runBackgroundNotificationTask = async () => {
       history: snapshot.history,
     });
 
+    const failed = result.health === "schedule_failed" || result.health === "partially_scheduled";
     await recordNotificationDiagnostic({
       type: "background",
       at: new Date().toISOString(),
-      result: "success",
+      result: failed ? "failed" : "success",
       durationMs: Date.now() - startedAt,
+      ...(failed ? { error: `Schedule health: ${result.health}` } : {}),
     }).catch(() => {});
 
-    return BackgroundTask.BackgroundTaskResult.Success;
+    return failed
+      ? BackgroundTask.BackgroundTaskResult.Failed
+      : BackgroundTask.BackgroundTaskResult.Success;
   } catch (error) {
     console.error("Siply: background fetch task failed", error);
     await recordNotificationDiagnostic({

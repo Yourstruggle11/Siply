@@ -15,6 +15,7 @@ export const POST_LOG_QUIET_MINUTES = 30;
 export const MAX_ML_PER_REMINDER = 400;
 export const REMINDER_TARGET_ML = 200;
 export const NOTIFICATION_CATEGORY_ID = "siply_reminder";
+export const NOTIFICATION_CATEGORY_NO_SNOOZE_ID = "siply_reminder_no_snooze";
 export const NOTIFICATION_ACTION_LOG = "LOG_DRINK";
 export const NOTIFICATION_ACTION_SNOOZE = "SNOOZE_30";
 export const NOTIFICATION_ACTION_SKIP = "SKIP_DRINK";

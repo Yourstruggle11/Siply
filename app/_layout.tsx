@@ -79,17 +79,6 @@ const RootLayoutNav = () => {
     () => (onboarding.completed ? "(tabs)" : "(onboarding)"),
     [onboarding.completed]
   );
-  const ensureNotificationPermission = React.useCallback(async () => {
-    const status = await Notifications.getPermissionsAsync();
-    if (status.granted) {
-      return;
-    }
-    if (status.canAskAgain === false) {
-      return;
-    }
-    await Notifications.requestPermissionsAsync();
-  }, []);
-
   useEffect(() => {
     const handleUrl = (url: string | null) => {
       void handleIncomingBackupUrl(url, 500).catch(() => {
@@ -170,13 +159,20 @@ const RootLayoutNav = () => {
       .catch((error) => {
         console.warn("Siply: hydration persistence did not settle before scheduling", error);
       })
-      .then(() => scheduleReconcile({
-        settings,
-        consumedMl: progress.consumedMl,
-        lastLogAt: quickLog.lastLogAt,
-        source: "state_change",
-        history,
-      }))
+      .then(async () => {
+        // Exact-alarm revocation stops the Android app and deletes its exact
+        // alarms. Check on cold startup as well as foreground return, then
+        // genuinely resubmit the plan rather than trusting Expo's stored IDs.
+        const preciseTimingChanged = await consumePreciseTimingStatusChange();
+        const fn = preciseTimingChanged ? scheduleForceReconcile : scheduleReconcile;
+        return fn({
+          settings,
+          consumedMl: progress.consumedMl,
+          lastLogAt: quickLog.lastLogAt,
+          source: preciseTimingChanged ? "exact_timing_change" : "state_change",
+          history,
+        });
+      })
       .catch((error) => {
         console.warn("Siply: state-change reminder reconcile failed", error);
       });
@@ -189,13 +185,6 @@ const RootLayoutNav = () => {
     settings,
     history,
   ]);
-
-  useEffect(() => {
-    if (!hydrated || !onboarding.completed) {
-      return;
-    }
-    void ensureNotificationPermission();
-  }, [hydrated, onboarding.completed, ensureNotificationPermission]);
 
   const processNotificationResponse = React.useCallback(
     async (response: Notifications.NotificationResponse) => {
@@ -211,6 +200,18 @@ const RootLayoutNav = () => {
         );
         void Notifications.dismissNotificationAsync(notificationId).catch(() => {});
         return isNew;
+      };
+      const runClaimed = async (operation: () => Promise<void> | void) => {
+        if (!(await claimNotification())) return false;
+        try {
+          await operation();
+          return true;
+        } catch (error) {
+          if (notificationId) {
+            await notificationActionDeduplicator.release(notificationId).catch(() => {});
+          }
+          throw error;
+        }
       };
 
       const familyId = resolveNotificationFamilyId(
@@ -231,33 +232,33 @@ const RootLayoutNav = () => {
       }
 
       if (action === NOTIFICATION_ACTION_SKIP) {
-        if (await claimNotification()) {
+        await runClaimed(async () => {
           if (familyId) {
             await markReminderFamilyHandled(familyId, "skipped");
           }
-        }
+        });
         return;
       }
 
       if (action === NOTIFICATION_ACTION_SNOOZE) {
-        if (!(await claimNotification())) {
-          return;
-        }
-        const meta = parseSiplyNotificationId(notificationId);
-        const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
-        if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
-          await snoozeNotification(amount, settings);
-          if (familyId) {
-            await markReminderFamilyHandled(familyId, "snoozed");
+        await runClaimed(async () => {
+          const meta = parseSiplyNotificationId(notificationId);
+          const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
+          if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+            throw new Error("Reminder amount was unavailable for snooze");
           }
-        }
+          const scheduled = await snoozeNotification(amount, settings, familyId);
+          if (familyId) {
+            await markReminderFamilyHandled(familyId, scheduled ? "snoozed" : "skipped");
+          }
+        });
         return;
       }
 
       if (action === NOTIFICATION_ACTION_VIEW_HISTORY) {
-        if (await claimNotification()) {
+        await runClaimed(() => {
           router.push("/(tabs)/history");
-        }
+        });
         return;
       }
 
@@ -265,17 +266,15 @@ const RootLayoutNav = () => {
         return;
       }
 
-      if (!(await claimNotification())) {
-        return;
-      }
-      const meta = parseSiplyNotificationId(notificationId);
-      const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
-      if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
-        if (familyId) {
-          await cancelNotificationFamily(familyId).catch(() => {});
+      await runClaimed(async () => {
+        const meta = parseSiplyNotificationId(notificationId);
+        const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
+        if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+          throw new Error("Reminder amount was unavailable for logging");
         }
+        if (familyId) await cancelNotificationFamily(familyId);
         await addConsumed(amount);
-      }
+      });
     },
     [addConsumed, router, settings]
   );
@@ -315,7 +314,6 @@ const RootLayoutNav = () => {
         }).catch((error) => {
           console.warn("Siply: foreground reminder reconcile failed", error);
         });
-        void ensureNotificationPermission();
       }
     }).catch((error) => {
       console.warn("Siply: foreground day refresh failed", error);

@@ -48,4 +48,26 @@ describe("migrateStorage", () => {
     expect(result.progress.consumedMl).toBe(0);
     expect(result.quickLog.presets.length).toBeGreaterThan(0);
   });
+
+  it("repairs unsafe persisted numeric values before they reach the scheduler", async () => {
+    const result = await migrateStorage(
+      {
+        settings: {
+          targetLiters: -2,
+          sipMl: 0,
+          gentleGoalThreshold: 240,
+        },
+        progress: {
+          date: getDateKey(new Date()),
+          consumedMl: -500,
+        },
+      },
+      4
+    );
+
+    expect(result.settings.targetLiters).toBe(DEFAULT_SETTINGS.targetLiters);
+    expect(result.settings.sipMl).toBe(DEFAULT_SETTINGS.sipMl);
+    expect(result.settings.gentleGoalThreshold).toBe(100);
+    expect(result.progress.consumedMl).toBe(0);
+  });
 });

@@ -5,8 +5,8 @@ import {
   NUDGE_MINUTES,
   URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY,
 } from "../../../core/constants";
-import { getDateKey } from "../../../core/time";
-import { litersToMl } from "../domain/calculations";
+import { addDays, addMinutes, getDateKey, setTimeOnDate } from "../../../core/time";
+import { getWindowMinutes, litersToMl } from "../domain/calculations";
 import { computeReminderSchedule, type ReminderPhase, type ReminderSlot } from "../domain/schedule";
 import {
   analyzeWeekendAwareness,
@@ -17,6 +17,7 @@ import {
   applyNotificationPlan,
   buildReminderFamilyId,
   cancelNotificationFamily,
+  parseSiplyNotificationId,
   type NotificationApplyResult,
   type NotificationPlanSlot,
 } from "./notifier";
@@ -47,7 +48,8 @@ export type ReminderHealth =
   | "target_met"
   | "outside_window"
   | "day_complete"
-  | "invalid_window";
+  | "invalid_window"
+  | "channel_blocked";
 
 export type ScheduleSnapshot = {
   version: 2;
@@ -63,6 +65,9 @@ export type ScheduleSnapshot = {
   slots: SerializedSlot[];
   triggerSource: string;
   desiredCount: number;
+  plannedCount?: number;
+  suppressedOptionalCount?: number;
+  suppressedBaseCount?: number;
   scheduledCount: number;
   verifiedFamilyIds: string[];
   health: ReminderHealth;
@@ -92,6 +97,8 @@ const listeners = new Set<(snapshot: ScheduleSnapshot | null) => void>();
 let mutexQueue: Promise<void> = Promise.resolve();
 let repairTimer: ReturnType<typeof setTimeout> | null = null;
 let repairAttempt = 0;
+let repairInputKey: string | null = null;
+let latestRepairInput: ReconcileInput | null = null;
 
 const withMutex = <T>(operation: () => Promise<T>): Promise<T> => {
   let resolve!: (value: T) => void;
@@ -187,7 +194,7 @@ const updateConsumedNudges = async (existing: ScheduleSnapshot | null, now: Date
     ledger[dateKey] = day;
   });
 
-  const validKeys = new Set([getDateKey(now), getDateKey(new Date(now.getTime() + 86_400_000))]);
+  const validKeys = new Set([getDateKey(now), getDateKey(addDays(now, 1))]);
   Object.keys(ledger).forEach((key) => {
     if (!validKeys.has(key)) delete ledger[key];
   });
@@ -220,7 +227,8 @@ const assignNudges = async (
   scheduleSlots: ReminderSlot[],
   input: ReconcileInput,
   existing: ScheduleSnapshot | null,
-  now: Date
+  now: Date,
+  urgencyMode: boolean
 ) => {
   const ledger = await updateConsumedNudges(existing, now);
   const adherence = computeHourlyAdherence(input.history ?? {}, now);
@@ -247,12 +255,9 @@ const assignNudges = async (
       slot.nudgeMode = "normal";
     });
 
-    const targetMl = litersToMl(input.settings.targetLiters);
-    const remainingRatio = dateKey === getDateKey(now)
-      ? Math.max(0, targetMl - input.consumedMl) / targetMl
-      : 1;
     const canUseUrgency = input.settings.urgencyExtraNudgeEnabled
-      && remainingRatio >= 0.6
+      && dateKey === getDateKey(now)
+      && urgencyMode
       && day.urgencyUsed.length < URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY;
     if (!canUseUrgency) return;
 
@@ -272,6 +277,29 @@ const assignNudges = async (
 
 const addMinutesSafe = (date: Date, minutes: number) => new Date(date.getTime() + minutes * 60_000);
 
+const isSubstantiallyBehindPace = (
+  input: ReconcileInput,
+  now: Date,
+  weekendAdjustmentMinutes: number
+) => {
+  const targetMl = litersToMl(input.settings.targetLiters);
+  if (targetMl <= 0 || input.consumedMl >= targetMl) return false;
+  let windowStart = setTimeOnDate(now, input.settings.windowStart);
+  const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+  if (input.settings.weekendAwarenessEnabled && isWeekend) {
+    windowStart = addMinutes(windowStart, weekendAdjustmentMinutes);
+  }
+  const windowEnd = setTimeOnDate(now, input.settings.windowEnd);
+  if (now <= windowStart || now >= windowEnd) return false;
+  const elapsedRatio = Math.min(
+    1,
+    Math.max(0, (now.getTime() - windowStart.getTime()) / (windowEnd.getTime() - windowStart.getTime()))
+  );
+  const expectedMl = targetMl * elapsedRatio;
+  const behindByMl = expectedMl - input.consumedMl;
+  return elapsedRatio >= 0.35 && behindByMl >= Math.max(300, targetMl * 0.1);
+};
+
 const readHandledFamilies = async (dateKeys: string[]) => {
   const state = await readJson<HandledFamilies>(HANDLED_FAMILIES_KEY, {});
   const wanted = new Set(dateKeys);
@@ -284,6 +312,7 @@ const readHandledFamilies = async (dateKeys: string[]) => {
 
 const healthFrom = (result: NotificationApplyResult, slotCount: number, targetMet: boolean, windowValid: boolean): ReminderHealth => {
   if (!windowValid) return "invalid_window";
+  if (result.channelBlocked) return "channel_blocked";
   if (result.status === "failed") return "schedule_failed";
   if (result.status === "partial") return "partially_scheduled";
   if (targetMet) return "target_met";
@@ -292,17 +321,39 @@ const healthFrom = (result: NotificationApplyResult, slotCount: number, targetMe
 };
 
 const scheduleAutomaticRepair = (input: ReconcileInput) => {
+  const inputKey = JSON.stringify({
+    settings: hashSettings(input.settings),
+    consumedMl: input.consumedMl,
+    lastLogAt: input.lastLogAt ?? null,
+    history: input.history ?? {},
+  });
+  latestRepairInput = input;
+  if (repairInputKey !== inputKey) {
+    repairInputKey = inputKey;
+    repairAttempt = 0;
+    if (repairTimer) clearTimeout(repairTimer);
+    repairTimer = null;
+  }
+  if (repairAttempt >= 3 && input.source !== "automatic_retry" && !repairTimer) {
+    repairAttempt = 0;
+  }
   if (repairTimer || repairAttempt >= 3) return;
   const delays = [5_000, 30_000, 120_000];
   const delay = delays[repairAttempt++] ?? delays[delays.length - 1];
   repairTimer = setTimeout(() => {
     repairTimer = null;
-    void reconcile({ ...input, source: "automatic_retry" });
+    const latest = latestRepairInput;
+    if (!latest) return;
+    void reconcile({ ...latest, source: "automatic_retry" }).catch((error) => {
+      console.warn("Siply: automatic reminder repair failed", error);
+    });
   }, delay);
 };
 
 const clearRepair = () => {
   repairAttempt = 0;
+  repairInputKey = null;
+  latestRepairInput = null;
   if (repairTimer) clearTimeout(repairTimer);
   repairTimer = null;
 };
@@ -314,23 +365,58 @@ const applyAndPersist = async (
   now: Date,
   computed: boolean,
   urgencyMode: boolean,
-  weekendAdjustmentMinutes: number
+  weekendAdjustmentMinutes: number,
+  reinstallExisting: boolean
 ) => {
   const dateKeys = Array.from(new Set([getDateKey(now), ...slots.map((slot) => getDateKey(new Date(slot.time)))]));
   const handled = await readHandledFamilies(dateKeys);
-  const result = await applyNotificationPlan(input.settings, deserializeSlots(slots), now, handled);
+  const result = await applyNotificationPlan(
+    input.settings,
+    deserializeSlots(slots),
+    now,
+    handled,
+    { reinstallExisting }
+  );
   const targetMet = input.consumedMl >= litersToMl(input.settings.targetLiters);
-  const windowValid = input.settings.windowEnd > input.settings.windowStart;
+  const windowValid = getWindowMinutes(input.settings) > 0
+    && Number.isFinite(input.settings.targetLiters)
+    && Number.isFinite(input.settings.sipMl)
+    && input.settings.targetLiters > 0
+    && input.settings.sipMl > 0;
   // Reconciliation is transactional: when a replacement cannot be installed,
   // keep presenting any older reminders that the OS still confirms as pending.
   const fallbackSlots = result.status === "failed" && existing
     ? existing.slots.filter((slot) => result.pendingFamilyIds.includes(slot.familyId))
     : [];
   const usingFallback = fallbackSlots.length > 0;
-  const effectiveSlots = usingFallback ? fallbackSlots : slots;
+  const retainedOldSlots = result.status === "partial" && existing
+    ? existing.slots.filter(
+        (slot) => result.pendingFamilyIds.includes(slot.familyId)
+          && !result.verifiedFamilyIds.includes(slot.familyId)
+      )
+    : [];
+  const verifiedNudges = new Map<string, Set<number>>();
+  result.pendingIds.forEach((identifier) => {
+    const parsed = parseSiplyNotificationId(identifier);
+    if (parsed?.kind !== "nudge" || !parsed.familyId || parsed.nudgeOffset === undefined) return;
+    const offsets = verifiedNudges.get(parsed.familyId) ?? new Set<number>();
+    offsets.add(parsed.nudgeOffset);
+    verifiedNudges.set(parsed.familyId, offsets);
+  });
+  const verifiedNewSlots = slots.map((slot) => ({
+    ...slot,
+    nudgeOffsets: slot.nudgeOffsets.filter((offset) => verifiedNudges.get(slot.familyId)?.has(offset)),
+  }));
+  const effectiveSlots = usingFallback
+    ? fallbackSlots
+    : Array.from(new Map([...verifiedNewSlots, ...retainedOldSlots].map((slot) => [slot.familyId, slot])).values())
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   const effectiveVerifiedFamilies = usingFallback
     ? fallbackSlots.map((slot) => slot.familyId)
-    : result.verifiedFamilyIds;
+    : Array.from(new Set([
+        ...result.verifiedFamilyIds,
+        ...retainedOldSlots.map((slot) => slot.familyId),
+      ]));
   const effectiveHealth = usingFallback
     ? "partially_scheduled"
     : healthFrom(result, slots.length, targetMet, windowValid);
@@ -361,6 +447,9 @@ const applyAndPersist = async (
     slots: effectiveSlots,
     triggerSource: input.source,
     desiredCount: result.desiredCount,
+    plannedCount: result.plannedCount ?? result.desiredCount,
+    suppressedOptionalCount: result.suppressedOptionalCount ?? 0,
+    suppressedBaseCount: result.suppressedBaseCount ?? 0,
     scheduledCount: usingFallback ? effectiveVerifiedFamilies.length : result.scheduled,
     verifiedFamilyIds: effectiveVerifiedFamilies,
     health: effectiveHealth,
@@ -383,6 +472,10 @@ const applyAndPersist = async (
     desiredCount: result.desiredCount,
     scheduledCount: result.scheduled,
     failedCount: result.failed,
+    plannedCount: result.plannedCount ?? result.desiredCount,
+    suppressedOptionalCount: result.suppressedOptionalCount ?? 0,
+    suppressedBaseCount: result.suppressedBaseCount ?? 0,
+    extraneousCount: result.extraneousIds?.length ?? 0,
     health: snapshot.health,
     urgencyMode,
     weekendAdjustmentMinutes,
@@ -395,6 +488,8 @@ const applyAndPersist = async (
 
 const shouldRecompute = (snapshot: ScheduleSnapshot | null, input: ReconcileInput, now: Date) =>
   !snapshot
+  || snapshot.health === "schedule_failed"
+  || snapshot.health === "partially_scheduled"
   || snapshot.dateKey !== getDateKey(now)
   || snapshot.timezoneOffsetMinutes !== now.getTimezoneOffset()
   || snapshot.settingsHash !== hashSettings(input.settings)
@@ -411,7 +506,8 @@ const execute = async (input: ReconcileInput, now: Date, force: boolean) => {
       now,
       false,
       existing!.urgencyMode,
-      existing!.weekendAdjustmentMinutes
+      existing!.weekendAdjustmentMinutes,
+      false
     );
   }
 
@@ -429,9 +525,8 @@ const execute = async (input: ReconcileInput, now: Date, force: boolean) => {
     input.lastLogAt,
     { weekendShiftMinutes: weekendAdjustmentMinutes }
   );
-  const urgencyMode = input.consumedMl < litersToMl(input.settings.targetLiters) * 0.4
-    && schedule.slots.some((slot) => slot.phase === "wind_down");
-  const assigned = await assignNudges(schedule.slots, input, existing, now);
+  const urgencyMode = isSubstantiallyBehindPace(input, now, weekendAdjustmentMinutes);
+  const assigned = await assignNudges(schedule.slots, input, existing, now, urgencyMode);
   return applyAndPersist(
     input,
     existing,
@@ -439,7 +534,8 @@ const execute = async (input: ReconcileInput, now: Date, force: boolean) => {
     now,
     true,
     urgencyMode,
-    weekendAdjustmentMinutes
+    weekendAdjustmentMinutes,
+    true
   );
 };
 
@@ -455,7 +551,23 @@ export const markReminderFamilyHandled = async (
   const dateKey = getDateKey(at);
   state[dateKey] = { ...(state[dateKey] ?? {}), [familyId]: status };
   await AsyncStorage.setItem(HANDLED_FAMILIES_KEY, JSON.stringify(state));
-  await cancelNotificationFamily(familyId);
+  const cancelledCount = await cancelNotificationFamily(familyId);
+  const snapshot = await readSnapshot();
+  if (snapshot) {
+    const removed = snapshot.slots.find((slot) => slot.familyId === familyId);
+    const removedNotificationCount = typeof cancelledCount === "number" && cancelledCount > 0
+      ? cancelledCount
+      : removed ? 1 + removed.nudgeOffsets.length : 0;
+    await writeSnapshot({
+      ...snapshot,
+      verifiedAt: at.toISOString(),
+      slots: snapshot.slots.filter((slot) => slot.familyId !== familyId),
+      verifiedFamilyIds: snapshot.verifiedFamilyIds.filter((id) => id !== familyId),
+      desiredCount: Math.max(0, snapshot.desiredCount - removedNotificationCount),
+      plannedCount: Math.max(0, (snapshot.plannedCount ?? snapshot.desiredCount) - removedNotificationCount),
+      scheduledCount: Math.max(0, snapshot.scheduledCount - removedNotificationCount),
+    });
+  }
   await recordNotificationDiagnostic({
     type: "action",
     at: at.toISOString(),

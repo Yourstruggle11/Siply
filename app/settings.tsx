@@ -14,7 +14,7 @@ import { ENABLE_DIAGNOSTICS, TAGLINE } from "../src/core/constants";
 import { useHydrationStore } from "../src/features/hydration/state/hydrationStore";
 import { useNotificationPermission } from "../src/shared/hooks/useNotificationPermission";
 import { sendTestNotificationDetailed } from "../src/features/hydration/notifications/notifier";
-import { reconcile } from "../src/features/hydration/notifications/scheduleEngine";
+import { forceReconcile } from "../src/features/hydration/notifications/scheduleEngine";
 import { useScheduleSnapshot } from "../src/shared/hooks/useScheduleSnapshot";
 import {
   clearNotificationDiagnostics,
@@ -196,7 +196,7 @@ export default function SettingsScreen() {
     setNotificationAction("reschedule");
     setNotificationActionStatus(null);
     try {
-      const result = await reconcile({
+      const result = await forceReconcile({
         settings,
         consumedMl: progress.consumedMl,
         lastLogAt: quickLog.lastLogAt,
@@ -205,7 +205,14 @@ export default function SettingsScreen() {
       });
       await Promise.all([refreshDiagnostics(), refreshScheduleSnapshot()]);
 
-      if (result.health === "schedule_failed") {
+      if (result.health === "channel_blocked") {
+        const message = "Android is blocking the Siply reminder channel. Re-enable it in system notification settings.";
+        setNotificationActionStatus(message);
+        Alert.alert("Reminder channel is off", message, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open settings", onPress: openSettings },
+        ]);
+      } else if (result.health === "schedule_failed") {
         const detail = result.errors[0] ?? "The device scheduler did not accept the reminder plan.";
         const message = "Siply couldn't verify the reminder schedule. It will retry automatically.";
         setNotificationActionStatus(message);
@@ -299,6 +306,7 @@ export default function SettingsScreen() {
       lines.push(`Schedule computed: ${scheduleSnapshot.computedAt}`);
       lines.push(`Schedule verified: ${scheduleSnapshot.verifiedAt}`);
       lines.push(`Schedule counts: desired=${scheduleSnapshot.desiredCount} scheduled=${scheduleSnapshot.scheduledCount} verifiedFamilies=${scheduleSnapshot.verifiedFamilyIds.length}`);
+      lines.push(`Schedule capacity: planned=${scheduleSnapshot.plannedCount ?? scheduleSnapshot.desiredCount} suppressedOptional=${scheduleSnapshot.suppressedOptionalCount ?? 0} suppressedBase=${scheduleSnapshot.suppressedBaseCount ?? 0}`);
       if (scheduleSnapshot.errors.length) {
         lines.push(`Schedule errors: ${scheduleSnapshot.errors.join(" | ")}`);
       }

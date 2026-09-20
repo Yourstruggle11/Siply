@@ -46,6 +46,13 @@ export class NotificationActionDeduplicator {
     return true;
   }
 
+  /** Releases a failed claim so the OS or foreground handler can retry it. */
+  async release(notificationId: string): Promise<void> {
+    await this.ready();
+    if (!this.entries.delete(notificationId)) return;
+    await this.persist();
+  }
+
   private async load(): Promise<void> {
     try {
       const raw = await this.storage.getItem(

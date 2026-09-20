@@ -24,6 +24,14 @@ export type HydrationStorageSnapshot = {
 const toNumber = (value: unknown, fallback: number) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
+const toPositiveNumber = (value: unknown, fallback: number) => {
+  const parsed = toNumber(value, fallback);
+  return parsed > 0 ? parsed : fallback;
+};
+
+const clampNumber = (value: unknown, fallback: number, minimum: number, maximum: number) =>
+  Math.min(maximum, Math.max(minimum, toNumber(value, fallback)));
+
 const toBoolean = (value: unknown, fallback: boolean) =>
   typeof value === "boolean" ? value : fallback;
 
@@ -46,16 +54,16 @@ const toReminderTone = (value: unknown, fallback: "encouraging" | "minimal" | "p
 export const normalizeSettings = (input: Partial<HydrationSettings> | null): HydrationSettings => {
   const base = input ?? {};
   return {
-    targetLiters: toNumber(base.targetLiters, DEFAULT_SETTINGS.targetLiters),
+    targetLiters: toPositiveNumber(base.targetLiters, DEFAULT_SETTINGS.targetLiters),
     windowStart: toTimeString(base.windowStart, DEFAULT_SETTINGS.windowStart),
     windowEnd: toTimeString(base.windowEnd, DEFAULT_SETTINGS.windowEnd),
-    sipMl: toNumber(base.sipMl, DEFAULT_SETTINGS.sipMl),
+    sipMl: toPositiveNumber(base.sipMl, DEFAULT_SETTINGS.sipMl),
     escalationEnabled: toBoolean(base.escalationEnabled, DEFAULT_SETTINGS.escalationEnabled),
     soundEnabled: toBoolean(base.soundEnabled, DEFAULT_SETTINGS.soundEnabled),
     appearanceMode: toAppearanceMode(base.appearanceMode, DEFAULT_SETTINGS.appearanceMode),
     displayUnit: toDisplayUnit(base.displayUnit, DEFAULT_SETTINGS.displayUnit),
     gentleGoalEnabled: toBoolean(base.gentleGoalEnabled, DEFAULT_SETTINGS.gentleGoalEnabled),
-    gentleGoalThreshold: toNumber(base.gentleGoalThreshold, DEFAULT_GENTLE_GOAL_THRESHOLD),
+    gentleGoalThreshold: clampNumber(base.gentleGoalThreshold, DEFAULT_GENTLE_GOAL_THRESHOLD, 50, 100),
     tone: toReminderTone(base.tone, DEFAULT_SETTINGS.tone!),
     weekendAwarenessEnabled: toBoolean(
       base.weekendAwarenessEnabled,
@@ -74,7 +82,7 @@ export const normalizeProgress = (input: HydrationProgress | null, todayKey: str
   }
   return {
     date: input.date,
-    consumedMl: toNumber(input.consumedMl, 0),
+    consumedMl: Math.max(0, toNumber(input.consumedMl, 0)),
   };
 };
 

@@ -96,4 +96,20 @@ describe("background notification task", () => {
     expect(await runBackgroundNotificationTask()).toBe(1);
     expect(mockReconcile).not.toHaveBeenCalled();
   });
+
+  it("reports a failed background result when reconciliation cannot restore the plan", async () => {
+    storage.set(HYDRATION_STORE_STORAGE_KEY, JSON.stringify({
+      version: SCHEMA_VERSION,
+      state: {
+        settings: DEFAULT_SETTINGS,
+        progress: { date: getDateKey(new Date()), consumedMl: 0 },
+        onboarding: { completed: true },
+        quickLog: { presets: [], lastUsedMl: null, lastLogAt: null },
+        history: {},
+      },
+    }));
+    mockReconcile.mockResolvedValue({ health: "schedule_failed" });
+
+    expect(await runBackgroundNotificationTask()).toBe(2);
+  });
 });
