@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../../../core/constants";
 import { getDateKey } from "../../../core/time";
 import { buildAiHydrationContext, fingerprintAiContext } from "../ai/context";
+import { ASK_SIPLY_SYSTEM_PROMPT } from "../ai/prompts";
 import type { HydrationHistory } from "../domain/types";
 
 describe("AI hydration context", () => {
@@ -33,6 +34,8 @@ describe("AI hydration context", () => {
     expect(context.recentHourlyHistory[0].quality).toBe("exact");
     expect(context.preferredDisplayUnit).toBe("cups");
     expect(context.valuesUnit).toBe("ml");
+    expect(context.version).toBe(2);
+    expect(context.settings).not.toHaveProperty("sipMl");
     const serialized = JSON.stringify(context);
     expect(serialized).not.toContain("private-entry-id");
     expect(serialized).not.toContain(timestamp);
@@ -48,5 +51,12 @@ describe("AI hydration context", () => {
     expect(first.period.dailyHistoryDays).toBe(14);
     expect(first.dailyHistory).toHaveLength(14);
     expect(fingerprintAiContext(first)).toBe(fingerprintAiContext(second));
+  });
+
+  it("grounds Ask Siply in real capabilities without unconditional medical copy", () => {
+    expect(ASK_SIPLY_SYSTEM_PROMPT).toContain("You cannot change settings");
+    expect(ASK_SIPLY_SYSTEM_PROMPT).toContain("only when the question actually concerns");
+    expect(ASK_SIPLY_SYSTEM_PROMPT).toContain("Do not invent Siply screens");
+    expect(ASK_SIPLY_SYSTEM_PROMPT).not.toContain("15 ml");
   });
 });

@@ -411,8 +411,16 @@ export default function SettingsScreen() {
           <Text style={[styles.aboutTagline, { color: theme.colors.textSecondary }]}>{TAGLINE}</Text>
         </AnimatedCard>
 
+        <View style={styles.groupHeader}>
+          <MaterialIcons name="palette" size={20} color={theme.colors.accent} />
+          <View style={styles.groupHeaderCopy}>
+            <Text style={[styles.groupTitle, { color: theme.colors.textPrimary }]}>Personalization</Text>
+            <Text style={[styles.groupDescription, { color: theme.colors.textSecondary }]}>Make Siply feel at home on this device.</Text>
+          </View>
+        </View>
+
         <AnimatedCard style={styles.section} delay={140}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Appearance</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Appearance & app icon</Text>
           <View style={styles.optionRow}>
             {(["light", "dark", "system"] as const).map((mode) => (
               <Pressable
@@ -483,8 +491,16 @@ export default function SettingsScreen() {
           </View>
         </AnimatedCard>
 
+        <View style={styles.groupHeader}>
+          <MaterialIcons name="notifications-none" size={20} color={theme.colors.accent} />
+          <View style={styles.groupHeaderCopy}>
+            <Text style={[styles.groupTitle, { color: theme.colors.textPrimary }]}>Reminders</Text>
+            <Text style={[styles.groupDescription, { color: theme.colors.textSecondary }]}>Choose how reminders reach you and personalize their timing.</Text>
+          </View>
+        </View>
+
         <AnimatedCard style={styles.section} delay={180}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Reminders</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Reminder preferences</Text>
           <View style={{ gap: 8, marginBottom: 8 }}>
             <Text style={[{ color: theme.colors.textPrimary, fontSize: 15, fontWeight: "500" }]}>Tone</Text>
             <View style={styles.optionRow}>
@@ -533,11 +549,27 @@ export default function SettingsScreen() {
               ) : null}
             </View>
           ) : null}
+          {Platform.OS === "android" && preciseTiming.supported ? (
+            <View style={styles.permissionRow}>
+              <View style={styles.smartSettingHeader}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={[styles.smartSettingTitle, { color: theme.colors.textPrimary }]}>Precise reminder timing</Text>
+                  <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Lets Android deliver reminders more accurately during idle and battery-saving periods. Device settings can still cause delays.</Text>
+                </View>
+                <Text style={[styles.smartSettingStatus, { color: preciseTiming.enabled ? theme.colors.accent : theme.colors.textSecondary }]}>{preciseTiming.enabled ? "Enabled" : "Not enabled"}</Text>
+              </View>
+              <Button
+                label={preciseTiming.enabled ? "Manage precise timing" : "Enable precise timing"}
+                variant="secondary"
+                onPress={() => void openPreciseTimingSettings()}
+              />
+            </View>
+          ) : null}
         </AnimatedCard>
 
         <AnimatedCard style={styles.section} delay={210}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Smart reminders</Text>
-          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Optional refinements that adapt reminder timing without changing your target or active window.</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Personalized reminders</Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Optional features that learn from your routine while keeping your target and active window in control.</Text>
           <ToggleRow
             label="Weekend rhythm"
             helper={weekendAwareness.eligible
@@ -580,32 +612,24 @@ export default function SettingsScreen() {
             disabled={!settings.escalationEnabled}
             onValueChange={(value) => void updateSettings({ urgencyExtraNudgeEnabled: value })}
           />
-          {Platform.OS === "android" && preciseTiming.supported ? (
-            <View style={styles.permissionRow}>
-              <View style={styles.smartSettingHeader}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={[styles.smartSettingTitle, { color: theme.colors.textPrimary }]}>Precise reminder timing</Text>
-                  <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Lets Android deliver reminders more accurately during idle and battery-saving periods. Device settings can still cause delays.</Text>
-                </View>
-                <Text style={[styles.smartSettingStatus, { color: preciseTiming.enabled ? theme.colors.accent : theme.colors.textSecondary }]}>{preciseTiming.enabled ? "Enabled" : "Not enabled"}</Text>
-              </View>
-              <Button
-                label={preciseTiming.enabled ? "Manage precise timing" : "Enable precise timing"}
-                variant="secondary"
-                onPress={() => void openPreciseTimingSettings()}
-              />
-            </View>
-          ) : null}
         </AnimatedCard>
 
+        <View style={styles.groupHeader}>
+          <MaterialIcons name="auto-awesome" size={20} color={theme.colors.accent} />
+          <View style={styles.groupHeaderCopy}>
+            <Text style={[styles.groupTitle, { color: theme.colors.textPrimary }]}>AI</Text>
+            <Text style={[styles.groupDescription, { color: theme.colors.textSecondary }]}>Optional answers and interpretations using your own provider key.</Text>
+          </View>
+        </View>
+
         <AnimatedCard style={styles.section} delay={200}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Optional AI</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>AI features</Text>
           <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
             Bring your own provider key. Requests go directly from this device to your selected provider; Siply has no AI server.
           </Text>
           <ToggleRow
             label="Automatic AI insights"
-            helper="Adds optional AI annotations, daily recaps, and weekly reviews in History. Local insights always keep working."
+            helper="Adds optional AI annotations, previous-day recaps, and Sunday weekly reviews in History. Local insights always keep working."
             value={preferences.automaticInsightsEnabled}
             onValueChange={(value) => void setAutomaticInsightsEnabled(value)}
           />
@@ -618,8 +642,16 @@ export default function SettingsScreen() {
           </View>
         </AnimatedCard>
 
+        <View style={styles.groupHeader}>
+          <MaterialIcons name="shield" size={20} color={theme.colors.accent} />
+          <View style={styles.groupHeaderCopy}>
+            <Text style={[styles.groupTitle, { color: theme.colors.textPrimary }]}>Data & privacy</Text>
+            <Text style={[styles.groupDescription, { color: theme.colors.textSecondary }]}>Back up local data and manage saved AI output.</Text>
+          </View>
+        </View>
+
         <AnimatedCard style={styles.section} delay={220}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Data backup</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Backup & saved AI</Text>
           {showBackupReminder ? (
             <View style={{ backgroundColor: theme.colors.accentSoft, padding: 12, borderRadius: 8, marginBottom: 8 }}>
               <Text style={[{ color: theme.colors.textPrimary, ...theme.typography.bodySmall, fontWeight: "600", marginBottom: 4 }]}>
@@ -672,8 +704,16 @@ export default function SettingsScreen() {
           {aiCacheStatus ? <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>{aiCacheStatus}</Text> : null}
         </AnimatedCard>
 
+        <View style={styles.groupHeader}>
+          <MaterialIcons name="build" size={20} color={theme.colors.accent} />
+          <View style={styles.groupHeaderCopy}>
+            <Text style={[styles.groupTitle, { color: theme.colors.textPrimary }]}>Maintenance</Text>
+            <Text style={[styles.groupDescription, { color: theme.colors.textSecondary }]}>Repair reminders, test delivery, or restart today.</Text>
+          </View>
+        </View>
+
         <AnimatedCard style={styles.section} delay={260}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Actions</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Reminder & day tools</Text>
           <View style={styles.actionGroup}>
             <Button
               label={notificationAction === "reschedule" ? "Rescheduling..." : "Reschedule notifications"}
@@ -814,6 +854,25 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: 12,
+  },
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  groupHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  groupTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  groupDescription: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   sectionTitle: {
     fontSize: 12,

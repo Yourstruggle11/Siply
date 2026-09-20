@@ -1,11 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { addDays, getDateKey, parseTimeToMinutes } from "../../../core/time";
+import { addDays, getDateKey } from "../../../core/time";
 import { formatLiquid } from "../../../core/units";
 import type { HydrationState } from "../state/hydrationStore";
 import { getDayContextSummary } from "../domain/history";
 import {
   AI_HISTORY_ARTIFACT_CACHE_STORAGE_KEY,
   AI_HISTORY_ARTIFACT_PROMPT_VERSION,
+  AI_HISTORY_PRESENTATION_STORAGE_KEY,
 } from "./constants";
 import { fingerprintValue } from "./insightCache";
 import type { AiHistoryArtifactCacheV1, AiHistoryArtifactKind } from "./types";
@@ -34,12 +35,7 @@ export const buildDailyRecapCandidate = (
   source: Source,
   now = new Date()
 ): AiHistoryArtifactCandidate | null => {
-  const endMinutes = parseTimeToMinutes(source.settings.windowEnd) ?? 22 * 60;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const todayKey = getDateKey(now);
-  const periodKey = nowMinutes >= endMinutes && source.history[todayKey]
-    ? todayKey
-    : getDateKey(addDays(now, -1));
+  const periodKey = getDateKey(addDays(now, -1));
   const summary = source.history[periodKey];
   if (!summary || summary.totalMl <= 0) return null;
   const target = summary.goalMl > 0 ? summary.goalMl : Math.round(source.settings.targetLiters * 1000);
@@ -63,11 +59,10 @@ export const buildDailyRecapCandidate = (
   return finalize({ kind: "daily_recap", periodKey, title: "Daily recap", deterministicText, context });
 };
 
-const mondayOfWeek = (date: Date) => {
+const sundayOfWeek = (date: Date) => {
   const result = new Date(date);
   result.setHours(12, 0, 0, 0);
-  const day = result.getDay();
-  result.setDate(result.getDate() - (day === 0 ? 6 : day - 1));
+  result.setDate(result.getDate() - result.getDay());
   return result;
 };
 
@@ -100,12 +95,13 @@ export const buildWeeklyReviewCandidate = (
   source: Source,
   now = new Date()
 ): AiHistoryArtifactCandidate | null => {
-  const currentMonday = mondayOfWeek(now);
-  const reviewedMonday = addDays(currentMonday, -7);
-  const comparisonMonday = addDays(currentMonday, -14);
-  const reviewed = summarizeWeek(source, reviewedMonday);
+  if (now.getDay() !== 0) return null;
+  const currentSunday = sundayOfWeek(now);
+  const reviewedSunday = addDays(currentSunday, -7);
+  const comparisonSunday = addDays(currentSunday, -14);
+  const reviewed = summarizeWeek(source, reviewedSunday);
   if (reviewed.trackedDays < 4) return null;
-  const comparison = summarizeWeek(source, comparisonMonday);
+  const comparison = summarizeWeek(source, comparisonSunday);
   const difference = comparison.averageTrackedDayMl > 0
     ? Math.round(((reviewed.averageTrackedDayMl - comparison.averageTrackedDayMl) /
       comparison.averageTrackedDayMl) * 100)
@@ -165,6 +161,52 @@ export const clearAiHistoryArtifactCaches = async () => {
   listeners.forEach((listener) => listener([]));
 };
 
+type AiHistoryPresentationV1 = {
+  version: 1;
+  dismissedDailyPeriodKey: string | null;
+};
+
+const presentationListeners = new Set<(state: AiHistoryPresentationV1) => void>();
+const EMPTY_PRESENTATION: AiHistoryPresentationV1 = {
+  version: 1,
+  dismissedDailyPeriodKey: null,
+};
+
+export const loadAiHistoryPresentation = async (): Promise<AiHistoryPresentationV1> => {
+  try {
+    const raw = await AsyncStorage.getItem(AI_HISTORY_PRESENTATION_STORAGE_KEY);
+    if (!raw) return EMPTY_PRESENTATION;
+    const parsed = JSON.parse(raw) as Partial<AiHistoryPresentationV1>;
+    if (
+      parsed.version !== 1 ||
+      (parsed.dismissedDailyPeriodKey !== null &&
+        typeof parsed.dismissedDailyPeriodKey !== "string")
+    ) return EMPTY_PRESENTATION;
+    return {
+      version: 1,
+      dismissedDailyPeriodKey: parsed.dismissedDailyPeriodKey ?? null,
+    };
+  } catch {
+    return EMPTY_PRESENTATION;
+  }
+};
+
+export const dismissDailyRecap = async (periodKey: string) => {
+  const state: AiHistoryPresentationV1 = {
+    version: 1,
+    dismissedDailyPeriodKey: periodKey,
+  };
+  await AsyncStorage.setItem(AI_HISTORY_PRESENTATION_STORAGE_KEY, JSON.stringify(state));
+  presentationListeners.forEach((listener) => listener(state));
+};
+
+export const subscribeAiHistoryPresentation = (
+  listener: (state: AiHistoryPresentationV1) => void
+) => {
+  presentationListeners.add(listener);
+  return () => presentationListeners.delete(listener);
+};
+
 export const subscribeAiHistoryArtifactCaches = (
   listener: (items: AiHistoryArtifactCacheV1[]) => void
 ) => {
@@ -185,4 +227,3 @@ export const makeHistoryArtifactCache = (
   contextFingerprint: candidate.contextFingerprint,
   generatedAt: now.toISOString(),
 });
-

@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   AI_HISTORY_DAILY_AUTOMATIC_ATTEMPT_LIMIT,
-  AI_HISTORY_REFRESH_COOLDOWN_MS,
+  AI_HISTORY_PHASE_BOUNDARIES,
   AI_HISTORY_REFRESH_THRESHOLD_ML,
   AI_INSIGHT_CACHE_STORAGE_KEY,
   AI_INSIGHT_PROMPT_VERSION,
@@ -70,8 +70,27 @@ export type InsightFetchDecisionInput = {
   targetMl: number;
   focused: boolean;
   automaticAttempts: number;
-  nowMs: number;
+  phaseAvailable: boolean;
   cache: AiInsightCacheV1 | null;
+};
+
+export type AiHistoryPhase = "early" | "middle" | "late";
+
+export const getAiHistoryPhase = (
+  activeWindow: { start: string; end: string },
+  now = new Date()
+): AiHistoryPhase | null => {
+  const [startHour, startMinute] = activeWindow.start.split(":").map(Number);
+  const [endHour, endMinute] = activeWindow.end.split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  const end = endHour * 60 + endMinute;
+  const current = now.getHours() * 60 + now.getMinutes();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  if (current < start || current >= end) return null;
+  const progress = (current - start) / (end - start);
+  if (progress < AI_HISTORY_PHASE_BOUNDARIES[0]) return "early";
+  if (progress < AI_HISTORY_PHASE_BOUNDARIES[1]) return "middle";
+  return "late";
 };
 
 export const shouldFetchAiInsight = (input: InsightFetchDecisionInput) => {
@@ -81,6 +100,7 @@ export const shouldFetchAiInsight = (input: InsightFetchDecisionInput) => {
     !input.hasLocalInsight ||
     !input.hasCredential ||
     !input.online ||
+    !input.phaseAvailable ||
     input.automaticAttempts >= AI_HISTORY_DAILY_AUTOMATIC_ATTEMPT_LIMIT
   ) {
     return false;
@@ -92,12 +112,6 @@ export const shouldFetchAiInsight = (input: InsightFetchDecisionInput) => {
     input.cache.providerConfigFingerprint !== input.providerConfigFingerprint
   ) return true;
 
-  const generatedAtMs = Date.parse(input.cache.generatedAt);
-  if (
-    Number.isFinite(generatedAtMs) &&
-    input.nowMs - generatedAtMs < AI_HISTORY_REFRESH_COOLDOWN_MS
-  ) return false;
-
   const targetMet = input.targetMl > 0 && input.consumedMl >= input.targetMl;
   if (targetMet !== input.cache.sourceTargetMet) return true;
   if (Math.abs(input.consumedMl - input.cache.sourceConsumedMl) >= AI_HISTORY_REFRESH_THRESHOLD_ML) {
@@ -108,9 +122,15 @@ export const shouldFetchAiInsight = (input: InsightFetchDecisionInput) => {
 
 export const shouldDisplayAiInsight = (
   enabled: boolean,
-  contextFingerprint: string,
+  localDate: string,
+  targetMl: number,
   cache: AiInsightCacheV1 | null
-) => enabled && cache?.contextFingerprint === contextFingerprint;
+) => Boolean(
+  enabled &&
+  cache?.promptVersion === AI_INSIGHT_PROMPT_VERSION &&
+  cache.localDate === localDate &&
+  cache.sourceTargetMl === targetMl
+);
 
 export const fingerprintValue = (value: unknown) => {
   const input = JSON.stringify(value);

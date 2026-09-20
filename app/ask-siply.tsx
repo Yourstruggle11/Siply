@@ -4,6 +4,8 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -53,6 +55,12 @@ export default function AskSiplyScreen() {
   const [error, setError] = useState<string | null>(null);
   const [androidKeyboardVisible, setAndroidKeyboardVisible] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const listRef = useRef<FlatList<DisplayMessage>>(null);
+  const followLatestRef = useRef(true);
+
+  const scrollToLatest = () => {
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  };
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -61,6 +69,7 @@ export default function AskSiplyScreen() {
 
     const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
       setAndroidKeyboardVisible(true);
+      if (followLatestRef.current) scrollToLatest();
     });
     const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
       setAndroidKeyboardVisible(false);
@@ -71,6 +80,10 @@ export default function AskSiplyScreen() {
       hideSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (followLatestRef.current) scrollToLatest();
+  }, [messages.length, sending]);
 
   const context = useMemo(
     () => buildAiHydrationContext({ settings, progress, history }, "ask"),
@@ -129,6 +142,7 @@ export default function AskSiplyScreen() {
     if (displayUser) setQuestion("");
     setError(null);
     setSending(true);
+    followLatestRef.current = true;
     if (displayUser) setMessages((current) => [...current, userMessage]);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -189,12 +203,22 @@ export default function AskSiplyScreen() {
         </View>
 
         <FlatList
+          ref={listRef}
           data={messages}
           keyExtractor={(item) => item.id}
           style={styles.list}
           contentContainerStyle={[styles.listContent, messages.length === 0 && styles.emptyList]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+            const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+            followLatestRef.current = distanceFromBottom < 72;
+          }}
+          scrollEventThrottle={16}
+          onContentSizeChange={() => {
+            if (followLatestRef.current) scrollToLatest();
+          }}
           renderItem={({ item }) => (
             <View
               style={[
@@ -309,7 +333,7 @@ export default function AskSiplyScreen() {
               <MaterialIcons name="arrow-upward" size={22} color={theme.colors.surface} />
             </Pressable>
           </View>
-          <Text style={[styles.disclaimer, { color: theme.colors.textSecondary }]}>AI can be wrong. Not medical advice.</Text>
+          <Text style={[styles.disclaimer, { color: theme.colors.textSecondary }]}>AI responses can be inaccurate.</Text>
         </View>
       </Screen>
     </KeyboardAvoidingView>

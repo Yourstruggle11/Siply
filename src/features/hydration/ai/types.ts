@@ -28,8 +28,8 @@ export type AiPreferences = {
   configRevision: number;
 };
 
-export type AiHydrationContextV1 = {
-  version: 1;
+export type AiHydrationContext = {
+  version: 2;
   purpose: "ask" | "history_insight";
   generatedAt: string;
   localDate: string;
@@ -39,7 +39,6 @@ export type AiHydrationContextV1 = {
   settings: {
     dailyTargetMl: number;
     activeWindow: { start: string; end: string };
-    sipMl: number;
     gentleGoal: { enabled: boolean; thresholdPercent: number };
   };
   today: {

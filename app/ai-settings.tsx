@@ -229,7 +229,7 @@ export default function AiSettingsScreen() {
             <Card style={styles.cardGap}>
               <ToggleRow
                 label="Automatic AI insights"
-                helper="Optionally adds AI annotations, daily recaps, and weekly reviews in History. Off by default; failures always fall back silently."
+                helper="Optionally adds AI annotations, previous-day recaps, and Sunday weekly reviews in History. Off by default; failures always fall back silently."
                 value={preferences.automaticInsightsEnabled}
                 onValueChange={(value) => void setAutomaticInsightsEnabled(value)}
               />

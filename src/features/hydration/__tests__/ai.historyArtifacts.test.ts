@@ -16,7 +16,7 @@ const summary = (date: string, totalMl: number, goalMl = 2000) => ({
 });
 
 describe("AI History artifacts", () => {
-  it("uses yesterday before the active window closes and today afterward", () => {
+  it("always recaps the previous completed calendar day", () => {
     const yesterday = "2026-09-13";
     const today = "2026-09-14";
     const history: HydrationHistory = {
@@ -26,11 +26,11 @@ describe("AI History artifacts", () => {
     const source = { settings: { ...DEFAULT_SETTINGS, windowEnd: "22:00" }, history };
 
     expect(buildDailyRecapCandidate(source, new Date(2026, 8, 14, 18))?.periodKey).toBe(yesterday);
-    expect(buildDailyRecapCandidate(source, new Date(2026, 8, 14, 22, 1))?.periodKey).toBe(today);
+    expect(buildDailyRecapCandidate(source, new Date(2026, 8, 14, 22, 1))?.periodKey).toBe(yesterday);
   });
 
   it("invalidates a daily recap fingerprint after a late edit", () => {
-    const date = "2026-09-14";
+    const date = "2026-09-13";
     const source = { settings: DEFAULT_SETTINGS, history: { [date]: summary(date, 1000) } };
     const before = buildDailyRecapCandidate(source, new Date(2026, 8, 14, 23));
     const after = buildDailyRecapCandidate({
@@ -40,19 +40,23 @@ describe("AI History artifacts", () => {
     expect(before?.contextFingerprint).not.toBe(after?.contextFingerprint);
   });
 
-  it("offers a review only for a completed week with at least four tracked days", () => {
-    const now = new Date(2026, 8, 16, 12);
-    const reviewedMonday = new Date(2026, 8, 7, 12);
+  it("offers the prior Sunday-to-Saturday review only on Sunday with four tracked days", () => {
+    const now = new Date(2026, 8, 20, 12);
+    const reviewedSunday = new Date(2026, 8, 13, 12);
     const history: HydrationHistory = {};
     for (let index = 0; index < 4; index += 1) {
-      const key = getDateKey(addDays(reviewedMonday, index));
+      const key = getDateKey(addDays(reviewedSunday, index));
       history[key] = summary(key, 1500 + index * 100);
     }
     const candidate = buildWeeklyReviewCandidate({ settings: DEFAULT_SETTINGS, history }, now);
-    expect(candidate?.periodKey).toBe("2026-09-07");
+    expect(candidate?.periodKey).toBe("2026-09-13");
+    expect(buildWeeklyReviewCandidate(
+      { settings: DEFAULT_SETTINGS, history },
+      new Date(2026, 8, 21, 12)
+    )).toBeNull();
 
     const threeDays = { ...history };
-    delete threeDays[getDateKey(addDays(reviewedMonday, 3))];
+    delete threeDays[getDateKey(addDays(reviewedSunday, 3))];
     expect(buildWeeklyReviewCandidate({ settings: DEFAULT_SETTINGS, history: threeDays }, now)).toBeNull();
   });
 });

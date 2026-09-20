@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AI_USAGE_STORAGE_KEY } from "./constants";
+import {
+  AI_HISTORY_DAILY_AUTOMATIC_ATTEMPT_LIMIT,
+  AI_USAGE_STORAGE_KEY,
+} from "./constants";
+import type { AiHistoryPhase } from "./insightCache";
 
 export type AiUsageBucket = "history_insight" | "daily_recap" | "weekly_review";
 
@@ -54,4 +58,55 @@ export const reserveAiAttempt = (
 export const getAiAttemptCount = async (bucket: AiUsageBucket, periodKey: string) => {
   const usage = await readUsage();
   return usage.attempts[keyFor(bucket, periodKey)] ?? 0;
+};
+
+export type AiHistoryAttemptState = {
+  attempts: number;
+  attemptedPhases: AiHistoryPhase[];
+};
+
+const HISTORY_PHASES: AiHistoryPhase[] = ["early", "middle", "late"];
+
+const getHistoryAttemptStateFromUsage = (
+  usage: AiUsageStateV1,
+  localDate: string
+): AiHistoryAttemptState => {
+  const attemptedPhases = HISTORY_PHASES.filter(
+    (phase) => (usage.attempts[keyFor("history_insight", `${localDate}:${phase}`)] ?? 0) > 0
+  );
+  const legacyAttempts = usage.attempts[keyFor("history_insight", localDate)] ?? 0;
+  return {
+    attempts: legacyAttempts + attemptedPhases.length,
+    attemptedPhases,
+  };
+};
+
+export const getAiHistoryAttemptState = async (
+  localDate: string
+): Promise<AiHistoryAttemptState> => getHistoryAttemptStateFromUsage(await readUsage(), localDate);
+
+/** Reserves at most one automatic History request in each early/middle/late phase. */
+export const reserveAiHistoryPhaseAttempt = (
+  localDate: string,
+  phase: AiHistoryPhase
+): Promise<boolean> => {
+  let reserved = false;
+  const operation = usageQueue.catch(() => undefined).then(async () => {
+    const usage = await readUsage();
+    const state = getHistoryAttemptStateFromUsage(usage, localDate);
+    if (
+      state.attempts >= AI_HISTORY_DAILY_AUTOMATIC_ATTEMPT_LIMIT ||
+      state.attemptedPhases.includes(phase)
+    ) return;
+    const phaseKey = keyFor("history_insight", `${localDate}:${phase}`);
+    const attempts = { ...usage.attempts, [phaseKey]: 1 };
+    const recentEntries = Object.entries(attempts).slice(-120);
+    await AsyncStorage.setItem(
+      AI_USAGE_STORAGE_KEY,
+      JSON.stringify({ version: 1, attempts: Object.fromEntries(recentEntries) })
+    );
+    reserved = true;
+  });
+  usageQueue = operation.catch(() => undefined);
+  return operation.then(() => reserved).catch(() => false);
 };

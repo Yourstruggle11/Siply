@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getDateKey } from "../../../core/time";
 import { useInternetStatus } from "../../../shared/network/NetworkStatusProvider";
 import {
   generateAiText,
@@ -14,20 +13,25 @@ import { fingerprintAiContext, fingerprintAiTrendContext } from "./context";
 import { getAiErrorCode } from "./errors";
 import {
   fingerprintValue,
+  getAiHistoryPhase,
   loadAiInsightCache,
   saveAiInsightCache,
   shouldDisplayAiInsight,
   shouldFetchAiInsight,
   subscribeAiInsightCache,
 } from "./insightCache";
+import type { AiHistoryPhase } from "./insightCache";
 import { normalizeInsightOutput } from "./output";
 import { AI_INSIGHT_SYSTEM_PROMPT, buildInsightMessages } from "./prompts";
 import { useAiSettings } from "./state";
-import { getAiAttemptCount, reserveAiAttempt } from "./usage";
-import type { AiHydrationContextV1, AiInsightCacheV1 } from "./types";
+import {
+  getAiHistoryAttemptState,
+  reserveAiHistoryPhaseAttempt,
+} from "./usage";
+import type { AiHydrationContext, AiInsightCacheV1 } from "./types";
 
 export const useAutomaticAiInsight = (
-  context: AiHydrationContextV1,
+  context: AiHydrationContext,
   deterministicInsight: string | null,
   focused: boolean
 ) => {
@@ -42,10 +46,23 @@ export const useAutomaticAiInsight = (
   const [cache, setCache] = useState<AiInsightCacheV1 | null>(null);
   const [cacheLoaded, setCacheLoaded] = useState(false);
   const [automaticAttempts, setAutomaticAttempts] = useState(0);
+  const [attemptedPhases, setAttemptedPhases] = useState<AiHistoryPhase[]>([]);
+  const [now, setNow] = useState(() => new Date());
   const [refreshing, setRefreshing] = useState(false);
   const attemptedSignature = useRef<string | null>(null);
   const contextFingerprint = useMemo(() => fingerprintAiContext(context), [context]);
   const trendFingerprint = useMemo(() => fingerprintAiTrendContext(context), [context]);
+  const currentPhase = useMemo(
+    () => getAiHistoryPhase(context.settings.activeWindow, now),
+    [context.settings.activeWindow, now]
+  );
+
+  useEffect(() => {
+    if (!focused) return;
+    setNow(new Date());
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, [focused]);
 
   useEffect(() => {
     let active = true;
@@ -54,11 +71,12 @@ export const useAutomaticAiInsight = (
     });
     void Promise.all([
       loadAiInsightCache(),
-      getAiAttemptCount("history_insight", context.localDate),
-    ]).then(([stored, attempts]) => {
+      getAiHistoryAttemptState(context.localDate),
+    ]).then(([stored, attemptState]) => {
       if (!active) return;
       setCache(stored);
-      setAutomaticAttempts(attempts);
+      setAutomaticAttempts(attemptState.attempts);
+      setAttemptedPhases(attemptState.attemptedPhases);
       setCacheLoaded(true);
     });
     return () => {
@@ -71,7 +89,11 @@ export const useAutomaticAiInsight = (
     if (!focused) attemptedSignature.current = null;
   }, [focused]);
 
-  const runGeneration = useCallback(async (manual: boolean, signal?: AbortSignal) => {
+  const runGeneration = useCallback(async (
+    manual: boolean,
+    signal?: AbortSignal,
+    phase?: AiHistoryPhase
+  ) => {
     const provider = preferences.activeProvider;
     if (!provider || !configuredProviders.includes(provider)) return false;
     if (preferences.needsAttention.includes(provider) || internetStatus !== "online") return false;
@@ -82,16 +104,14 @@ export const useAutomaticAiInsight = (
       revision: preferences.configRevision,
     });
     if (!manual) {
-      const reserved = await reserveAiAttempt(
-        "history_insight",
-        context.localDate,
-        AI_HISTORY_DAILY_AUTOMATIC_ATTEMPT_LIMIT
-      );
+      if (!phase) return false;
+      const reserved = await reserveAiHistoryPhaseAttempt(context.localDate, phase);
       if (!reserved) {
-        setAutomaticAttempts(AI_HISTORY_DAILY_AUTOMATIC_ATTEMPT_LIMIT);
+        const state = await getAiHistoryAttemptState(context.localDate);
+        setAutomaticAttempts(state.attempts);
+        setAttemptedPhases(state.attemptedPhases);
         return false;
       }
-      setAutomaticAttempts((count) => count + 1);
     }
 
     setRefreshing(true);
@@ -114,7 +134,7 @@ export const useAutomaticAiInsight = (
         provider,
         model: getCredentialModel(credential),
         generatedAt: now.toISOString(),
-        localDate: getDateKey(now),
+        localDate: context.localDate,
         dataThroughDate: context.localDate,
         contextFingerprint,
         providerConfigFingerprint,
@@ -133,6 +153,11 @@ export const useAutomaticAiInsight = (
       return false;
     } finally {
       setRefreshing(false);
+      if (!manual) {
+        const state = await getAiHistoryAttemptState(context.localDate);
+        setAutomaticAttempts(state.attempts);
+        setAttemptedPhases(state.attemptedPhases);
+      }
     }
   }, [
     configuredProviders,
@@ -149,7 +174,7 @@ export const useAutomaticAiInsight = (
 
   useEffect(() => {
     const provider = preferences.activeProvider;
-    if (!hydrated || !cacheLoaded || !provider || !deterministicInsight) return;
+    if (!hydrated || !cacheLoaded || !provider || !deterministicInsight || !currentPhase) return;
     if (!configuredProviders.includes(provider) || preferences.needsAttention.includes(provider)) return;
     if (internetStatus !== "online" || !preferences.automaticInsightsEnabled || !focused) return;
     let active = true;
@@ -174,18 +199,19 @@ export const useAutomaticAiInsight = (
         consumedMl: context.today.consumedMl,
         targetMl: context.settings.dailyTargetMl,
         automaticAttempts,
-        nowMs: Date.now(),
+        phaseAvailable: !attemptedPhases.includes(currentPhase),
         cache,
       });
       if (!shouldFetch) return;
       const signature = [
         context.localDate,
+        currentPhase,
         providerConfigFingerprint,
         contextFingerprint,
       ].join(":");
       if (attemptedSignature.current === signature) return;
       attemptedSignature.current = signature;
-      await runGeneration(false, controller.signal);
+      await runGeneration(false, controller.signal, currentPhase);
     });
 
     return () => {
@@ -199,6 +225,7 @@ export const useAutomaticAiInsight = (
     configuredProviders,
     context,
     contextFingerprint,
+    currentPhase,
     deterministicInsight,
     focused,
     getCredential,
@@ -209,12 +236,14 @@ export const useAutomaticAiInsight = (
     preferences.configRevision,
     preferences.needsAttention,
     runGeneration,
+    attemptedPhases,
     trendFingerprint,
   ]);
 
   const text = shouldDisplayAiInsight(
     preferences.automaticInsightsEnabled,
-    contextFingerprint,
+    context.localDate,
+    context.settings.dailyTargetMl,
     cache
   ) ? cache?.text ?? null : null;
   const activeProvider = preferences.activeProvider;

@@ -6,10 +6,13 @@ import { getAiErrorCode } from "./errors";
 import {
   buildDailyRecapCandidate,
   buildWeeklyReviewCandidate,
+  dismissDailyRecap,
+  loadAiHistoryPresentation,
   loadAiHistoryArtifactCaches,
   makeHistoryArtifactCache,
   saveAiHistoryArtifactCache,
   subscribeAiHistoryArtifactCaches,
+  subscribeAiHistoryPresentation,
   type AiHistoryArtifactCandidate,
 } from "./historyArtifacts";
 import { normalizeInsightOutput } from "./output";
@@ -28,6 +31,8 @@ export const useAiHistoryArtifacts = (source: Source, focused: boolean) => {
   const ai = useAiSettings();
   const [caches, setCaches] = useState<AiHistoryArtifactCacheV1[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [dismissedDailyPeriodKey, setDismissedDailyPeriodKey] = useState<string | null>(null);
+  const [presentationLoaded, setPresentationLoaded] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const attempted = useRef(new Set<string>());
   const daily = useMemo(() => buildDailyRecapCandidate(source, now), [now, source]);
@@ -52,11 +57,31 @@ export const useAiHistoryArtifacts = (source: Source, focused: boolean) => {
   }, []);
 
   useEffect(() => {
-    if (!loaded || !focused || !ai.hydrated || !ai.preferences.automaticInsightsEnabled) return;
+    let active = true;
+    const unsubscribe = subscribeAiHistoryPresentation((state) => {
+      if (active) setDismissedDailyPeriodKey(state.dismissedDailyPeriodKey);
+    });
+    void loadAiHistoryPresentation().then((state) => {
+      if (!active) return;
+      setDismissedDailyPeriodKey(state.dismissedDailyPeriodKey);
+      setPresentationLoaded(true);
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !loaded ||
+      !presentationLoaded ||
+      !focused ||
+      !ai.hydrated ||
+      !ai.preferences.automaticInsightsEnabled
+    ) return;
     if (internetStatus !== "online" || !ai.preferences.activeProvider) return;
     const provider = ai.preferences.activeProvider;
     if (!ai.configuredProviders.includes(provider) || ai.preferences.needsAttention.includes(provider)) return;
-    const candidates = [daily, weekly].filter(
+    const visibleDaily = daily?.periodKey === dismissedDailyPeriodKey ? null : daily;
+    const candidates = [visibleDaily, weekly].filter(
       (candidate): candidate is AiHistoryArtifactCandidate => Boolean(candidate)
     );
     const stale = candidates.filter((candidate) => !caches.some((cache) =>
@@ -106,7 +131,16 @@ export const useAiHistoryArtifacts = (source: Source, focused: boolean) => {
     });
 
     return () => { active = false; controller.abort(); };
-  }, [ai, daily, focused, internetStatus, loaded, weekly]);
+  }, [
+    ai,
+    daily,
+    dismissedDailyPeriodKey,
+    focused,
+    internetStatus,
+    loaded,
+    presentationLoaded,
+    weekly,
+  ]);
 
   const resolve = (candidate: AiHistoryArtifactCandidate | null) => {
     if (!ai.preferences.automaticInsightsEnabled || !candidate) return null;
@@ -118,5 +152,15 @@ export const useAiHistoryArtifacts = (source: Source, focused: boolean) => {
     return { ...candidate, aiText: cache?.text ?? null };
   };
 
-  return { daily: resolve(daily), weekly: resolve(weekly) };
+  const resolvedDaily = !presentationLoaded || daily?.periodKey === dismissedDailyPeriodKey
+    ? null
+    : resolve(daily);
+
+  return {
+    daily: resolvedDaily,
+    weekly: resolve(weekly),
+    dismissDaily: async () => {
+      if (daily) await dismissDailyRecap(daily.periodKey);
+    },
+  };
 };

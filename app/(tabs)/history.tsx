@@ -51,6 +51,13 @@ const formatDateLabel = (dateKey: string) => {
   }
 };
 
+const formatWeekLabel = (startKey: string) => {
+  const start = new Date(`${startKey}T12:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return `${formatDateLabel(startKey)}–${formatDateLabel(getDateKey(end))}`;
+};
+
 export default function HistoryScreen() {
   const theme = useTheme();
   const settings = useHydrationStore((s) => s.settings);
@@ -272,7 +279,17 @@ export default function HistoryScreen() {
 
           {historyArtifacts.daily ? (
             <AnimatedCard style={styles.section} delay={40}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily recap · {formatDateLabel(historyArtifacts.daily.periodKey)}</Text>
+              <View style={styles.artifactHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Daily recap · {formatDateLabel(historyArtifacts.daily.periodKey)}</Text>
+                <Pressable
+                  onPress={() => void historyArtifacts.dismissDaily()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss daily recap"
+                  hitSlop={10}
+                >
+                  <MaterialCommunityIcons name="close" size={20} color={theme.colors.textSecondary} />
+                </Pressable>
+              </View>
               <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{historyArtifacts.daily.deterministicText}</Text>
               {historyArtifacts.daily.aiText ? (
                 <View style={[styles.aiInsight, { borderTopColor: theme.colors.border }]}>
@@ -288,7 +305,7 @@ export default function HistoryScreen() {
 
           {historyArtifacts.weekly ? (
             <AnimatedCard style={styles.section} delay={45}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Weekly review</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Weekly review · {formatWeekLabel(historyArtifacts.weekly.periodKey)}</Text>
               <Text style={[styles.aiInsightText, { color: theme.colors.textPrimary }]}>{historyArtifacts.weekly.deterministicText}</Text>
               {historyArtifacts.weekly.aiText ? (
                 <View style={[styles.aiInsight, { borderTopColor: theme.colors.border }]}>
@@ -630,6 +647,12 @@ const styles = StyleSheet.create({
   },
   entryListSection: {
     marginTop: 4,
+  },
+  artifactHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   aiInsight: {
     borderTopWidth: 1,

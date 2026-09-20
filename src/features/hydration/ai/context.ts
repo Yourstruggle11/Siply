@@ -10,15 +10,15 @@ import {
 } from "../domain/history";
 import type { HydrationState } from "../state/hydrationStore";
 import { fingerprintValue } from "./insightCache";
-import type { AiHydrationContextV1 } from "./types";
+import type { AiHydrationContext } from "./types";
 
 type ContextSource = Pick<HydrationState, "settings" | "progress" | "history">;
 
 export const buildAiHydrationContext = (
   source: ContextSource,
-  purpose: AiHydrationContextV1["purpose"],
+  purpose: AiHydrationContext["purpose"],
   now = new Date()
-): AiHydrationContextV1 => {
+): AiHydrationContext => {
   const dailyHistoryDays = purpose === "ask" ? 90 : 14;
   const hourlyHistoryDays = 7 as const;
   const goalMl = litersToMl(source.settings.targetLiters);
@@ -67,7 +67,7 @@ export const buildAiHydrationContext = (
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
   return {
-    version: 1,
+    version: 2,
     purpose,
     generatedAt: now.toISOString(),
     localDate,
@@ -80,7 +80,6 @@ export const buildAiHydrationContext = (
         start: source.settings.windowStart,
         end: source.settings.windowEnd,
       },
-      sipMl: source.settings.sipMl,
       gentleGoal: {
         enabled: source.settings.gentleGoalEnabled,
         thresholdPercent: source.settings.gentleGoalThreshold,
@@ -115,13 +114,13 @@ export const buildAiHydrationContext = (
   };
 };
 
-export const fingerprintAiContext = (context: AiHydrationContextV1) => {
+export const fingerprintAiContext = (context: AiHydrationContext) => {
   const { generatedAt: _generatedAt, ...stableContext } = context;
   return fingerprintValue(stableContext);
 };
 
 /** Stable non-today inputs used to notice imports, edits, and setting changes. */
-export const fingerprintAiTrendContext = (context: AiHydrationContextV1) =>
+export const fingerprintAiTrendContext = (context: AiHydrationContext) =>
   fingerprintValue({
     settings: context.settings,
     preferredDisplayUnit: context.preferredDisplayUnit,
