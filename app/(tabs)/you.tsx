@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View, Pressable, Text } from "react-native";
+import { Alert, StyleSheet, View, Pressable, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "../../src/shared/components/Screen";
@@ -14,6 +14,7 @@ import { useHydrationStore } from "../../src/features/hydration/state/hydrationS
 import { QUICK_LOG_MAX_PRESETS, QUICK_LOG_MIN_PRESETS } from "../../src/core/constants";
 import { formatLiquid, convertFromUnit } from "../../src/core/units";
 import { DrinkPreset } from "../../src/features/hydration/domain/types";
+import { parseTimeToMinutes } from "../../src/core/time";
 
 const PREDEFINED_DRINKS = [
   { id: "water", name: "Water", icon: "cup-water" },
@@ -79,6 +80,16 @@ export default function YouScreen() {
     const parsedTarget = Number.parseFloat(draft.target);
     const parsedGentle = Number.parseInt(draft.gentleGoalThreshold, 10);
     
+    const startMinutes = parseTimeToMinutes(draft.windowStart);
+    const endMinutes = parseTimeToMinutes(draft.windowEnd);
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+      Alert.alert(
+        "Choose a same-day window",
+        "The reminder end time must be later than the start time. Overnight windows are not supported yet."
+      );
+      return;
+    }
+
     await updateSettings({
       targetLiters: Number.isFinite(parsedTarget) && parsedTarget > 0 ? parsedTarget : settings.targetLiters,
       windowStart: draft.windowStart,

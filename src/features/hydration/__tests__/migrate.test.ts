@@ -35,6 +35,12 @@ describe("migrateStorage", () => {
     expect(result.progress.consumedMl).toBe(0);
   });
 
+  it("defaults newly introduced smart-reminder settings to off", async () => {
+    const result = await migrateStorage({ settings: { targetLiters: 3 } }, 3);
+    expect(result.settings.weekendAwarenessEnabled).toBe(false);
+    expect(result.settings.urgencyExtraNudgeEnabled).toBe(false);
+  });
+
   it("handles corrupt snapshot without data loss (uses defaults)", async () => {
     const corrupt = { settings: null, progress: null };
     const result = await migrateStorage(corrupt, 2);

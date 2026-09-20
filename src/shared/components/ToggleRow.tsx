@@ -7,9 +7,10 @@ type ToggleRowProps = {
   helper?: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  disabled?: boolean;
 };
 
-export const ToggleRow = ({ label, helper, value, onValueChange }: ToggleRowProps) => {
+export const ToggleRow = ({ label, helper, value, onValueChange, disabled = false }: ToggleRowProps) => {
   const theme = useTheme();
   return (
     <View style={styles.row}>
@@ -20,11 +21,13 @@ export const ToggleRow = ({ label, helper, value, onValueChange }: ToggleRowProp
       <Switch
         value={value}
         onValueChange={onValueChange}
+        disabled={disabled}
         trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
         thumbColor={theme.colors.surface}
         ios_backgroundColor={theme.colors.border}
         accessibilityRole="switch"
         accessibilityLabel={label}
+        accessibilityState={{ disabled, checked: value }}
       />
     </View>
   );

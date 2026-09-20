@@ -22,47 +22,49 @@ Siply is a local-first hydration tracker built with React Native, Expo 54, and e
 - Optional bring-your-own-key AI features for OpenAI, Anthropic, Google Gemini, and NVIDIA NIM: Ask Siply offers one-tap questions grounded in local hydration summaries, while opt-in History annotations, daily recaps, and weekly reviews augment deterministic local insights.
 - Shareable progress images in a native development/production build.
 - JSON backup export/import with validation, confirmation, history merging, persisted-write verification, `.siply.json` file associations, and validated handling of generic file-provider URIs.
-- Two read-only Android home-screen widgets (circular and linear) with current progress and the computed next reminder time. Tapping a widget opens Siply; Android requests a widget refresh every 30 minutes and app-side state changes request immediate refreshes.
+- Two read-only Android home-screen widgets (circular and linear) with current progress and the next OS-verified reminder time. Tapping a widget opens Siply; Android requests a widget refresh every 30 minutes and verified plan changes request immediate refreshes.
 - Milestone celebrations when a log completes a 7-, 30-, or 100-day streak.
 
 ## Notifications
 
-Siply uses a centralized schedule engine to coordinate all notification scheduling. The engine serializes concurrent requests through a mutex, persists a schedule snapshot to AsyncStorage, and only recomputes when meaningful state changes occur (a drink is logged, settings change, or the day rolls over). This prevents reminder-time drift from app foregrounding or background tasks.
+Siply uses one serialized schedule engine for foreground, restore, background, and settings flows. It persists a versioned plan snapshot, compares it with the real OS queue, adds and verifies replacement notifications before removing obsolete ones, and automatically retries transient scheduling failures. If a replacement cannot be installed, Siply preserves the last OS-confirmed plan rather than leaving the user without reminders. A passive “Restoring reminders” status appears only when no usable reminder could be verified; recovery does not depend on the user pressing a repair button.
 
-Reminder slot times are computed on a grid anchored to the configured window start time. For example, with a 30-minute reminder window starting at 07:00, slots fall on 07:00, 07:30, 08:00, and so on. The first future slot after the current time is selected, producing identical times regardless of when the schedule is evaluated. The display layer reads from the persisted snapshot so the time shown on the home screen widgets and in the app exactly matches what is scheduled with the OS.
+Reminder times are stable. A plan is recomputed when hydration state or reminder settings meaningfully change, or when the local day rolls over—not merely because the app was reopened or time passed. Foreground and background checks verify and repair the stored plan without shifting it. The Today screen and Android widgets read only OS-verified families from this snapshot, so their next-reminder time is not independently guessed.
 
 ```mermaid
 flowchart TD
-    A["App Foreground"] --> E["scheduleEngine.reconcile()"]
-    B["State Change"] --> E
-    C["Background Task"] --> E
-    D["Backup Import"] --> F["scheduleEngine.forceReconcile()"]
-
-    E --> G{"Stale?"}
-    G -->|No| H["Return cached snapshot"]
-    G -->|Yes| I["Mutex → Compute → Schedule → Persist"]
-    F --> I
-
-    I --> J["ScheduleSnapshot (AsyncStorage + cache)"]
-    J --> K["useScheduleSnapshot → useHydrationPlan"]
-
-    style E fill:#51cf66,color:#fff
-    style J fill:#339af0,color:#fff
+    A["Drink / settings / day change"] --> E["Serialized schedule engine"]
+    B["Foreground or background repair"] --> E
+    C["Backup restore"] --> E
+    E --> D{"Inputs changed?"}
+    D -->|Yes| F["Compute stable 24-hour plan"]
+    D -->|No| G["Reuse stored times"]
+    F --> H["Diff against OS queue"]
+    G --> H
+    H --> I["Add → verify → remove obsolete"]
+    I --> J["Persist verified snapshot"]
+    J --> K["Today + Android widgets"]
 ```
 
-Siply calculates reminder amounts from the remaining daily target and the remaining active window. It schedules a rolling 24-hour set of local notifications, up to 48 scheduled items. Nudge notifications (5 and 10 minutes after a reminder) are governed by a daily budget of four nudge sequences; once the budget is exhausted, remaining reminders fire without nudges. On iOS, the engine enforces a hard cap of 58 pending notifications with six reserved for snooze, test, and summary use. Individual reminder amounts are capped at 400 ml to avoid unrealistic ask amounts when few slots remain.
+The engine calculates reminder amounts from the remaining target and available opportunities, caps any one reminder at 400 ml, and schedules a rolling 24-hour local plan within a 48-item total queue budget. Six positions are reserved for transient snooze/test requests; base reminders, all allowed nudges, and up to two summaries share the remainder. Scheduled notification copy is fixed when the OS request is created. Future amounts follow the “no new drink” path, so if a reminder is ignored, later already-scheduled reminders can ask for a larger—but capped—amount without depending on background JavaScript. Logging a drink cancels that reminder family, recomputes the plan, and enforces at least 30 quiet minutes before the next same-day reminder.
+
+When **Nudges** is enabled, Siply selects up to four reminder families per hydration day, distributed across the active window and biased toward historically lower-adherence hours. Each selected family receives follow-ups at +5 and +10 minutes, for at most eight normal follow-up notifications per day. **Extra catch-up nudge** is separately opt-in and may add one more +5/+10 family when the no-new-log path indicates the user will remain substantially behind. Disabling Nudges disables both normal and catch-up follow-ups.
 
 Reminder notifications provide these actions:
 
 - **I drank** logs the amount encoded in the notification and opens the app.
 - **Snooze 30 min** cancels any pending nudges for the original slot and schedules one replacement reminder.
-- **Skip** dismisses the notification without logging.
+- **Skip** cancels the original reminder family without logging.
 
-The app also schedules a state-independent end-of-window summary with a **View History** action. A "Last Call" fallback schedules one final reminder near the window end when regular slots have passed, subject to a 15-minute minimum gap from the previous slot and a sip-size threshold below which no Last Call is issued. Reminder copy can be encouraging, minimal, or playful. Android uses separate sound and silent notification channels.
+Android registers a headless notification-action task so Skip and Snooze can still be handled while the app is backgrounded or terminated. iOS opens Siply for those actions because Expo only supports terminated-state action tasks on Android. Action IDs are persisted for 24 hours and capped at 50 entries so a response delivered again after launch is not applied twice. Ordinary dismissal does not replan or cancel the follow-up family; on iOS it is recorded only in the local diagnostic journal.
 
-The schedule engine detects urgency mode when more than 60% of the daily target remains with less than 30% of the active window left. In urgency mode, escalation is automatically enabled and the nudge budget is boosted by two additional sequences. The engine also exports a weekend-awareness helper that detects historically lower weekend intake from 30-day history.
+End-of-day scheduling has a reserved 30-minute closeout period. Regular reminders stop before it; at most one calm **Last call** can be placed at the boundary, it never receives nudges, and no aggressive catch-up burst is created afterward. Quantities smaller than one configured sip are suppressed. A state-independent summary can run at the active-window end with **View History**. Active windows must start and finish within the same calendar day; equal or overnight windows are rejected until Siply has a first-class Hydration Day model.
 
-Siply reschedules through the engine after hydration, on relevant state changes, when returning to the foreground, after a restore, and through a best-effort Expo background task. The engine's staleness check ensures the background task does not needlessly shift reminder times. Notification actions are deduplicated across restarts with a bounded 24-hour history. Daily progress rolls over just after local midnight, resetting both consumed millilitres and the last-log timestamp. The operating system still controls whether and when background work runs, so device-level timing is not guaranteed.
+**Weekend rhythm** is optional and off by default. It becomes available only after at least four observed weeks, six weekend log days, twelve weekday log days, and a median weekend first-log time at least 60 minutes later than weekdays. When enabled, it delays weekend starts by at most 60 minutes while preserving the configured end time. Siply shows a one-time in-app readiness notice when this setting becomes useful.
+
+On Android 12+, **Precise reminder timing** links to the system’s Exact Alarm access screen. Normal notification permission is still required and remains separate. Exact Alarm access can improve delivery during idle or battery-saving periods but cannot guarantee delivery at an exact second. Siply educates at most twice—first after three days, then no sooner than 30 days—and detects grant/revocation changes on foreground. This permission and the background/action integrations require a new native build.
+
+Daily progress rolls over just after local midnight while the app is active and is repaired on foreground after suspension. A best-effort Expo background task runs no more often than the OS allows (configured with a six-hour minimum) to verify and replenish the rolling plan; notification delivery never depends on that task running at an exact time. Local diagnostics retain at most 250 scheduler/action/background events for seven days, are excluded from backups, and are never uploaded automatically. The operating system can still delay notifications because of device policy, battery restrictions, or revoked permissions.
 
 ## Optional AI
 
@@ -117,10 +119,11 @@ src/features/hydration/ai/            redacted context, provider adapters, secur
 src/features/hydration/widgets/       Android widget renderer and task handler
 src/features/hydration/ui/            hydration-specific UI
 src/shared/                            reusable components, hooks (incl. schedule snapshot), network state, theme, haptics
-scripts/                               icon generation
+scripts/                               icon generation and native-runtime validation
+website/                               Astro + Tailwind static marketing site
 ```
 
-State is managed by Zustand selectors. Zustand's persistence middleware stores hydration state as one JSON value under `siply:hydration_store:v1`, with schema version 3. Older Zustand schema versions are normalized through the same migration path; the retired six-key persistence model is no longer present. Separate AsyncStorage keys hold the schedule engine's snapshot and nudge-budget state, notification-action deduplication, diagnostics, first-launch time, last-export time, non-secret AI preferences, cached AI annotations/recaps/reviews, and automatic-request counters; those operational values are not included in backups. AI credentials live separately in SecureStore.
+State is managed by Zustand selectors. Zustand's persistence middleware stores hydration state as one JSON value under `siply:hydration_store:v1`, with schema version 4. Older Zustand schema versions are normalized through the same migration path; the retired six-key persistence model is no longer present. Separate AsyncStorage keys hold the OS-verified schedule snapshot, daily nudge and handled-family ledgers, notification-action deduplication, bounded diagnostics, intelligent-feature prompt state, first-launch time, last-export time, non-secret AI preferences, cached AI annotations/recaps/reviews, and automatic-request counters. These operational values are not included in backups. AI credentials live separately in SecureStore.
 
 History days may contain `entries` (`id`, ISO timestamp, and `amountMl`). Entry arrays are retained for seven days; daily totals, goals, hourly counts, and other summaries are retained for 120 days. Backup merging unions retained entries by ID where possible and otherwise keeps the higher known daily total.
 
@@ -130,7 +133,7 @@ Daily progress rolls over just after local midnight while the app is active. If 
 
 Requirements:
 
-- Node.js and npm
+- Node.js 20.19 or newer and npm
 - Expo/EAS tooling available through `npx`
 - Android Studio or Xcode for local native builds, as applicable
 - An Expo account for EAS builds
@@ -146,6 +149,7 @@ Run the unit tests and TypeScript checks:
 ```bash
 npm test
 npm run typecheck
+npm run validate:native-runtime
 ```
 
 Generate the primary, adaptive, splash, and alternate PNG icon assets from their source artwork when an icon changes:
@@ -160,7 +164,15 @@ Start Metro for a custom development client:
 npm start
 ```
 
-The `start` script runs `expo start --dev-client`; `npm run android` and `npm run ios` start their Expo targets. A `web` script is present, but the repository does not currently include the React Native Web runtime dependencies, and AI setup is mobile-only. Android widgets, notification channels/actions, bundled notification sound, background tasks, file associations, network monitoring, secure AI-key storage, and launcher-icon selection require a native development or release build. Rebuild the development client after adding or changing native Expo modules or bundled icon choices.
+The `start` script runs `expo start --dev-client`; `npm run android` and `npm run ios` start their Expo targets. The root `web` script is an Expo command, but the mobile package does not currently include React Native Web runtime dependencies, and AI setup is mobile-only. Android widgets, precise timing, notification channels/actions, bundled notification sound, background tasks, file associations, network monitoring, secure AI-key storage, and launcher-icon selection require a native development or release build. Rebuild the development client after changing native modules, permissions, config plugins, or bundled icon choices.
+
+Run the marketing site independently:
+
+```bash
+cd website
+npm install
+npm run dev
+```
 
 ## Builds
 
@@ -185,3 +197,12 @@ npm run build:all:production
 ```
 
 Android is configured with package `com.yourstruggle11.siply`, ProGuard, and resource shrinking. The repository does not currently declare an iOS `bundleIdentifier`; configure one before relying on iOS distribution. Internal iOS distribution also requires an Apple Developer account and registered devices (`npm run eas:devices`).
+
+Siply keeps `runtimeVersion.policy = "appVersion"`. Every checked-in EAS build and update script runs `validate:native-runtime`, and CI runs the same guard. The accepted Expo native fingerprint lives in `native-runtime-baseline.json`. If native inputs change:
+
+1. Bump `expo.version` in `app.json` (and the package version; update local build numbers where appropriate).
+2. Review the native change.
+3. Run `npm run accept:native-runtime` to record the new version/fingerprint pair.
+4. Run the normal build or update command.
+
+The guard rejects native changes under an unchanged app version and rejects a version that has not been accepted. EAS uses remote build-number auto-incrementing, while the app version remains the OTA runtime boundary. Current app version is `1.2.0`; the checked-in local Android version code and iOS build number are `4`.

@@ -1,7 +1,7 @@
 import { getDateKey } from "../../../core/time";
 import type { HydrationStorageSnapshot } from "../../../core/storage/migrations";
-import { computeReminderSchedule } from "../domain/schedule";
 import { litersToMl } from "../domain/calculations";
+import type { ScheduleSnapshot } from "../notifications/scheduleEngine";
 
 type WidgetSource = Pick<HydrationStorageSnapshot, "settings" | "progress">;
 
@@ -26,18 +26,25 @@ export const formatWidgetReminderLabel = (next: Date | null, now: Date) => {
   return `${day} · ${formatClockTime(next)}`;
 };
 
-export const buildWidgetHydrationData = (source: WidgetSource, now = new Date()) => {
+export const buildWidgetHydrationData = (
+  source: WidgetSource,
+  now = new Date(),
+  scheduleSnapshot: ScheduleSnapshot | null = null
+) => {
   const targetMl = litersToMl(source.settings.targetLiters);
   const consumedMl = source.progress.date === getDateKey(now)
     ? Math.max(0, source.progress.consumedMl)
     : 0;
   const percentage = targetMl > 0 ? Math.round((consumedMl / targetMl) * 100) : 0;
-  const schedule = computeReminderSchedule(now, source.settings, consumedMl);
+  const verifiedFamilies = new Set(scheduleSnapshot?.verifiedFamilyIds ?? []);
+  const nextSlot = scheduleSnapshot?.slots.find(
+    (slot) => verifiedFamilies.has(slot.familyId) && new Date(slot.time) > now
+  );
+  const nextReminder = nextSlot ? new Date(nextSlot.time) : null;
   return {
     consumedMl,
     targetMl,
     percentage,
-    nextReminderLabel: formatWidgetReminderLabel(schedule.slots[0]?.time ?? null, now),
+    nextReminderLabel: formatWidgetReminderLabel(nextReminder, now),
   };
 };
-

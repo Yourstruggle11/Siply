@@ -2,8 +2,11 @@ import { parseTimeToMinutes } from "../../../core/time";
 import {
   MAX_NOTIFICATIONS_PER_DAY,
   MIN_INTERVAL_MINUTES,
+  NORMAL_NUDGE_FAMILIES_PER_DAY,
   NUDGE_MINUTES,
   REMINDER_TARGET_ML,
+  TRANSIENT_NOTIFICATION_RESERVE,
+  URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY,
 } from "../../../core/constants";
 import { HydrationSettings } from "./types";
 
@@ -18,13 +21,13 @@ export const litersToMl = (liters: number) => Math.round(liters * 1000);
 export const getWindowMinutes = (settings: HydrationSettings) => {
   const startMinutes = parseTimeToMinutes(settings.windowStart) ?? 0;
   const endMinutes = parseTimeToMinutes(settings.windowEnd) ?? 0;
-  if (startMinutes === endMinutes) {
+  // Siply's progress day resets at midnight. Overnight windows would span two
+  // different progress days, so reject them until a first-class Hydration Day
+  // model exists.
+  if (endMinutes <= startMinutes) {
     return 0;
   }
-  if (endMinutes > startMinutes) {
-    return endMinutes - startMinutes;
-  }
-  return 24 * 60 - startMinutes + endMinutes;
+  return endMinutes - startMinutes;
 };
 
 export const computeAutoPlan = (input: {
@@ -57,8 +60,7 @@ export const computeHydrationPlan = (
   remainingMl: number
 ): AutoPlan | null => {
   const windowMinutes = getWindowMinutes(settings);
-  const factor = settings.escalationEnabled ? 1 + NUDGE_MINUTES.length : 1;
-  const maxBase = Math.max(1, Math.floor(MAX_NOTIFICATIONS_PER_DAY / factor));
+  const maxBase = getMaxBaseReminderCount(settings);
   return computeAutoPlan({
     remainingMl,
     windowMinutes,
@@ -66,6 +68,18 @@ export const computeHydrationPlan = (
     maxReminders: maxBase,
     desiredReminderMl: REMINDER_TARGET_ML,
   });
+};
+
+export const getMaxBaseReminderCount = (settings: HydrationSettings) => {
+  const reservedForNudges = settings.escalationEnabled
+    ? (NORMAL_NUDGE_FAMILIES_PER_DAY + URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY)
+      * NUDGE_MINUTES.length
+      * 2
+    : 0;
+  return Math.max(
+    1,
+    MAX_NOTIFICATIONS_PER_DAY - TRANSIENT_NOTIFICATION_RESERVE - reservedForNudges - 2
+  );
 };
 
 export const computeSipsPerReminder = (mlPerReminder: number, sipMl: number) =>

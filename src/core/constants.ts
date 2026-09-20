@@ -3,18 +3,24 @@ import { DrinkPreset, HydrationSettings } from "../features/hydration/domain/typ
 export const APP_NAME = "Siply";
 export const TAGLINE = "drink water, on time.";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const MIN_INTERVAL_MINUTES = 30;
 export const MAX_NOTIFICATIONS_PER_DAY = 48;
+export const TRANSIENT_NOTIFICATION_RESERVE = 6;
 export const NUDGE_MINUTES = [5, 10] as const;
+export const NORMAL_NUDGE_FAMILIES_PER_DAY = 4;
+export const URGENCY_EXTRA_NUDGE_FAMILIES_PER_DAY = 1;
+export const POST_LOG_QUIET_MINUTES = 30;
+export const MAX_ML_PER_REMINDER = 400;
 export const REMINDER_TARGET_ML = 200;
-export const NOTIFICATION_CATEGORY_ID = "siply-reminder";
+export const NOTIFICATION_CATEGORY_ID = "siply_reminder";
 export const NOTIFICATION_ACTION_LOG = "LOG_DRINK";
 export const NOTIFICATION_ACTION_SNOOZE = "SNOOZE_30";
 export const NOTIFICATION_ACTION_SKIP = "SKIP_DRINK";
-export const NOTIFICATION_CATEGORY_SUMMARY_ID = "siply-summary";
+export const NOTIFICATION_CATEGORY_SUMMARY_ID = "siply_summary";
 export const NOTIFICATION_ACTION_VIEW_HISTORY = "siply.action.VIEW_HISTORY";
+export const NOTIFICATION_ACTION_DISMISS = "com.apple.UNNotificationDismissActionIdentifier";
 export const DEFAULT_GENTLE_GOAL_THRESHOLD = 60;
 export const DEFAULT_QUICK_LOG_PRESETS: DrinkPreset[] = [
   { id: "preset-water-250", name: "Glass of Water", icon: "cup-water", amountMl: 250 },
@@ -41,4 +47,6 @@ export const DEFAULT_SETTINGS: HydrationSettings = {
   gentleGoalEnabled: false,
   gentleGoalThreshold: DEFAULT_GENTLE_GOAL_THRESHOLD,
   tone: "encouraging",
+  weekendAwarenessEnabled: false,
+  urgencyExtraNudgeEnabled: false,
 };

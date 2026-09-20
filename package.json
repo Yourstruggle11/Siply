@@ -1,6 +1,6 @@
 {
   "name": "siply",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start --dev-client",
@@ -10,14 +10,17 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "generate:icons": "node scripts/generate-icons.mjs",
-    "dev:android": "eas build --platform android --profile development",
-    "dev:ios": "eas build --platform ios --profile development",
-    "build:android:preview": "eas build --platform android --profile preview",
-    "build:ios:preview": "eas build --platform ios --profile preview",
-    "build:all:production": "eas build --platform all --profile production",
+    "validate:native-runtime": "node scripts/native-runtime.mjs validate",
+    "accept:native-runtime": "node scripts/native-runtime.mjs accept",
+    "eas-build-post-install": "npm run validate:native-runtime",
+    "dev:android": "npm run validate:native-runtime && eas build --platform android --profile development",
+    "dev:ios": "npm run validate:native-runtime && eas build --platform ios --profile development",
+    "build:android:preview": "npm run validate:native-runtime && eas build --platform android --profile preview",
+    "build:ios:preview": "npm run validate:native-runtime && eas build --platform ios --profile preview",
+    "build:all:production": "npm run validate:native-runtime && eas build --platform all --profile production",
     "eas:devices": "eas device:create",
-    "update:preview": "eas update --channel preview",
-    "update:production": "eas update --channel production"
+    "update:preview": "npm run validate:native-runtime && eas update --channel preview",
+    "update:production": "npm run validate:native-runtime && eas update --channel production"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -47,6 +50,7 @@
     "react-native": "0.81.5",
     "react-native-android-widget": "0.17.2",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-permissions": "^5.4.4",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -56,6 +60,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@expo/fingerprint": "^0.15.5",
     "@types/react": "~19.1.0",
     "babel-preset-expo": "~54.0.10",
     "sharp": "^0.34.5",

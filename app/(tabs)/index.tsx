@@ -11,12 +11,22 @@ import { useHydrationPlan } from "../../src/shared/hooks/useHydrationPlan";
 import { formatTimeForDisplay, getDateKey, setTimeOnDate } from "../../src/core/time";
 import { formatLiquid, parseLiquidInputToMl } from "../../src/core/units";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../../src/shared/haptics";
 import { useNotificationPermission } from "../../src/shared/hooks/useNotificationPermission";
 import type { LogEntry } from "../../src/features/hydration/domain/types";
 import { CelebrationOverlay } from "../../src/shared/components/CelebrationOverlay";
 import { computeStreakStats, computeSmartPresets } from "../../src/features/hydration/domain/history";
 import { litersToMl } from "../../src/features/hydration/domain/calculations";
+import {
+  dismissPreciseTimingPrompt,
+  shouldShowPreciseTimingPrompt,
+} from "../../src/features/hydration/notifications/preciseTiming";
+import { analyzeWeekendAwareness } from "../../src/features/hydration/domain/schedulingIntelligence";
+import {
+  dismissWeekendReadyPrompt,
+  shouldShowWeekendReadyPrompt,
+} from "../../src/features/hydration/notifications/intelligentPrompts";
 
 // ---------------------------------------------------------------------------
 // Timeline entry shape used for rendering.
@@ -31,6 +41,7 @@ interface TimelineEntry {
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const addConsumed = useHydrationStore((s) => s.addConsumed);
   const quickLog = useHydrationStore((s) => s.quickLog);
   const globalProgress = useHydrationStore((s) => s.progress);
@@ -43,6 +54,9 @@ export default function HomeScreen() {
   const [showAddAmount, setShowAddAmount] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
   const [milestoneStreak, setMilestoneStreak] = useState<number | null>(null);
+  const [showPreciseTimingPrompt, setShowPreciseTimingPrompt] = useState(false);
+  const [showWeekendReadyPrompt, setShowWeekendReadyPrompt] = useState(false);
+  const weekendAwareness = useMemo(() => analyzeWeekendAwareness(history), [history]);
 
   const smartPresets = useMemo(() => {
     // Only recompute periodically or on log, but using new Date() every render is okay for this lightweight function
@@ -103,6 +117,18 @@ export default function HomeScreen() {
     requestedRef.current = true;
     void requestPermission();
   }, [permission, requestPermission]);
+
+  useEffect(() => {
+    if (!permission) return;
+    void shouldShowPreciseTimingPrompt(permission.granted).then(setShowPreciseTimingPrompt);
+  }, [permission]);
+
+  useEffect(() => {
+    void shouldShowWeekendReadyPrompt(
+      weekendAwareness.eligible,
+      settings.weekendAwarenessEnabled
+    ).then(setShowWeekendReadyPrompt);
+  }, [settings.weekendAwarenessEnabled, weekendAwareness.eligible]);
 
   useEffect(() => {
     if (Platform.OS === 'ios' && plan.targetMl > 0) {
@@ -188,6 +214,76 @@ export default function HomeScreen() {
               variant="secondary"
               onPress={permission.canAskAgain ? requestPermission : openSettings}
             />
+          </AnimatedCard>
+        ) : null}
+
+        {showPreciseTimingPrompt ? (
+          <AnimatedCard style={styles.alertCard} delay={90}>
+            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary, ...theme.typography.titleMedium }]}>Make reminders more punctual</Text>
+            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Android may delay ordinary reminders to save battery. Precise Reminder Timing improves accuracy, although device settings can still cause delays.</Text>
+            <View style={styles.promptActions}>
+              <Button
+                label="Learn more"
+                variant="secondary"
+                onPress={() => {
+                  setShowPreciseTimingPrompt(false);
+                  void dismissPreciseTimingPrompt(false);
+                  router.push("/settings");
+                }}
+              />
+              <Pressable
+                onPress={() => {
+                  setShowPreciseTimingPrompt(false);
+                  void dismissPreciseTimingPrompt(false);
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, textAlign: "center" }]}>Not now</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setShowPreciseTimingPrompt(false);
+                  void dismissPreciseTimingPrompt(true);
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, textAlign: "center" }]}>Don’t show again</Text>
+              </Pressable>
+            </View>
+          </AnimatedCard>
+        ) : null}
+
+        {showWeekendReadyPrompt ? (
+          <AnimatedCard style={styles.alertCard} delay={95}>
+            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary, ...theme.typography.titleMedium }]}>Your weekend rhythm is ready</Text>
+            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Siply found a consistent difference in when your weekday and weekend hydration starts. You can now choose weekend-aware reminders in Settings.</Text>
+            <View style={styles.promptActions}>
+              <Button
+                label="Review setting"
+                variant="secondary"
+                onPress={() => {
+                  setShowWeekendReadyPrompt(false);
+                  void dismissWeekendReadyPrompt();
+                  router.push("/settings");
+                }}
+              />
+              <Pressable
+                onPress={() => {
+                  setShowWeekendReadyPrompt(false);
+                  void dismissWeekendReadyPrompt();
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={[{ color: theme.colors.textSecondary, ...theme.typography.caption, textAlign: "center" }]}>Dismiss</Text>
+              </Pressable>
+            </View>
+          </AnimatedCard>
+        ) : null}
+
+        {plan.reminderHealth === "schedule_failed" && permission?.granted ? (
+          <AnimatedCard style={styles.alertCard} delay={100}>
+            <Text style={[styles.alertTitle, { color: theme.colors.textPrimary, ...theme.typography.titleMedium }]}>Restoring reminders</Text>
+            <Text style={[styles.alertBody, { color: theme.colors.textSecondary, ...theme.typography.bodySmall }]}>Reminders are temporarily unavailable. Siply is retrying automatically.</Text>
           </AnimatedCard>
         ) : null}
 
@@ -306,7 +402,9 @@ export default function HomeScreen() {
                  ? (plan.nextReminderAt.getDate() !== new Date().getDate() 
                      ? `Tomorrow, ${formatTimeForDisplay(plan.nextReminderAt)}` 
                      : formatTimeForDisplay(plan.nextReminderAt)) 
-                 : "Not scheduled"}
+                 : plan.reminderHealth === "schedule_failed"
+                   ? "Restoring automatically"
+                   : "Not scheduled"}
              </Text>
            </View>
         </AnimatedCard>
@@ -424,6 +522,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44, // touch target
+  },
+  promptActions: {
+    gap: 10,
   },
   presetName: {
     width: "100%",

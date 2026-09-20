@@ -5,6 +5,7 @@ import React from 'react';
 import { DEFAULT_SETTINGS } from '../../../core/constants';
 import { getDateKey } from '../../../core/time';
 import { buildWidgetHydrationData } from './widgetData';
+import { getScheduleSnapshot } from '../notifications/scheduleEngine';
 
 export async function renderAndroidWidget(isLinear: boolean = false) {
   let source = {
@@ -21,7 +22,8 @@ export async function renderAndroidWidget(isLinear: boolean = false) {
     console.error('Failed to load widget data', err);
   }
 
-  const widgetData = buildWidgetHydrationData(source);
+  const scheduleSnapshot = await getScheduleSnapshot().catch(() => null);
+  const widgetData = buildWidgetHydrationData(source, new Date(), scheduleSnapshot);
 
   if (isLinear) {
     return <SiplyLinearWidget {...widgetData} />;

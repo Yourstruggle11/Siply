@@ -3,7 +3,7 @@
     "name": "Siply",
     "slug": "siply",
     "scheme": "siply",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -21,14 +21,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "3",
+      "buildNumber": "4",
       "config": {
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "UIBackgroundModes": [
-          "fetch"
-        ],
         "CFBundleDocumentTypes": [
           {
             "CFBundleTypeName": "Siply Backup",
@@ -56,7 +53,7 @@
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -67,7 +64,8 @@
       "package": "com.yourstruggle11.siply",
       "permissions": [
         "POST_NOTIFICATIONS",
-        "RECEIVE_BOOT_COMPLETED"
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
       ],
       "intentFilters": [
         {
@@ -97,6 +95,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-background-task",
       [
         "expo-notifications",
         {

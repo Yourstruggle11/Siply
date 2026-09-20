@@ -1,255 +1,199 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetItem, mockSetItem, mockRescheduleNotifications } = vi.hoisted(() => ({
-  mockGetItem: vi.fn(),
-  mockSetItem: vi.fn(),
-  mockRescheduleNotifications: vi.fn(),
+const { storage, mockApplyNotificationPlan, mockCancelFamily } = vi.hoisted(() => ({
+  storage: new Map<string, string>(),
+  mockApplyNotificationPlan: vi.fn(),
+  mockCancelFamily: vi.fn(),
 }));
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
-    getItem: mockGetItem,
-    setItem: mockSetItem,
-    removeItem: vi.fn(),
+    getItem: vi.fn(async (key: string) => storage.get(key) ?? null),
+    setItem: vi.fn(async (key: string, value: string) => { storage.set(key, value); }),
+    removeItem: vi.fn(async (key: string) => { storage.delete(key); }),
   },
 }));
 
-vi.mock("../notifications/notifier", () => ({
-  rescheduleNotifications: mockRescheduleNotifications,
-  cancelAllNotifications: vi.fn(),
+vi.mock("../notifications/diagnostics", () => ({
+  recordNotificationDiagnostic: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { reconcile, forceReconcile, isRelaxedDay } from "../notifications/scheduleEngine";
-import { DEFAULT_SETTINGS } from "../../../core/constants";
-import { getDateKey } from "../../../core/time";
-import { HydrationHistory } from "../domain/types";
+vi.mock("../notifications/notifier", () => ({
+  buildReminderFamilyId: (time: Date) => `siply-family-${time.getTime()}`,
+  cancelNotificationFamily: mockCancelFamily,
+  applyNotificationPlan: mockApplyNotificationPlan,
+}));
 
-describe("scheduleEngine — reconcile", () => {
+import { DEFAULT_SETTINGS } from "../../../core/constants";
+import {
+  SCHEDULE_SNAPSHOT_KEY,
+  forceReconcile,
+  getNextReminderFromSnapshot,
+  reconcile,
+} from "../notifications/scheduleEngine";
+
+const successfulApply = (_settings: unknown, slots: Array<{ familyId: string }>) => ({
+  success: true,
+  status: "verified" as const,
+  requested: slots.length,
+  scheduled: slots.length,
+  failed: 0,
+  desiredCount: slots.length,
+  pendingIds: [],
+  verifiedBaseIds: [],
+  verifiedFamilyIds: slots.map((slot) => slot.familyId),
+  pendingFamilyIds: slots.map((slot) => slot.familyId),
+  errors: [],
+});
+
+describe("scheduleEngine", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetItem.mockResolvedValue(null);
-    mockSetItem.mockResolvedValue(undefined);
-    mockRescheduleNotifications.mockResolvedValue({
-      success: true,
-      scheduled: 5,
-      requested: 5,
-      failed: 0,
-      errors: [],
-    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 21, 8, 0));
+    storage.clear();
+    mockApplyNotificationPlan.mockReset();
+    mockApplyNotificationPlan.mockImplementation(successfulApply);
+    mockCancelFamily.mockReset();
   });
 
-  it("schedules when no existing snapshot exists", async () => {
-    const result = await reconcile({
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("creates and persists an OS-verified plan", async () => {
+    const snapshot = await reconcile({
       settings: DEFAULT_SETTINGS,
       consumedMl: 500,
       source: "test",
     });
 
-    expect(result).not.toBeNull();
-    expect(result!.consumedMlAtCompute).toBe(500);
-    expect(result!.triggerSource).toBe("test");
-    expect(mockRescheduleNotifications).toHaveBeenCalledTimes(1);
+    expect(snapshot.consumedMlAtCompute).toBe(500);
+    expect(snapshot.health).toBe("scheduled");
+    expect(mockApplyNotificationPlan).toHaveBeenCalledOnce();
+    expect(JSON.parse(storage.get(SCHEDULE_SNAPSHOT_KEY)!)).toMatchObject({ version: 2 });
   });
 
-  it("skips rescheduling when snapshot is fresh and nothing changed", async () => {
-    // First call — creates snapshot
-    const snapshot = await forceReconcile({
+  it("verifies an unchanged plan without recomputing or shifting its times", async () => {
+    const first = await forceReconcile({
       settings: DEFAULT_SETTINGS,
       consumedMl: 500,
       source: "first",
     });
+    const firstTimes = first.slots.map((slot) => slot.time);
 
-    // Mock getItem to return the snapshot we just created
-    mockGetItem.mockImplementation(async (key: string) => {
-      if (key === "siply:schedule_snapshot:v1") {
-        return JSON.stringify(snapshot);
-      }
-      return null;
-    });
-
-    mockRescheduleNotifications.mockClear();
-
-    // Second call — same inputs, should be skipped
-    const result = await reconcile({
+    vi.setSystemTime(new Date(2026, 8, 21, 8, 20));
+    const second = await reconcile({
       settings: DEFAULT_SETTINGS,
       consumedMl: 500,
-      source: "second",
+      source: "foreground",
     });
 
-    // Should return the cached snapshot without rescheduling
-    expect(result).not.toBeNull();
-    expect(mockRescheduleNotifications).not.toHaveBeenCalled();
+    expect(mockApplyNotificationPlan).toHaveBeenCalledTimes(2);
+    expect(second.planId).toBe(first.planId);
+    expect(second.revision).toBe(first.revision);
+    expect(second.slots.map((slot) => slot.time)).toEqual(firstTimes);
+    expect(getNextReminderFromSnapshot(second)?.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it("reschedules when consumedMl changes", async () => {
-    // First call
-    const snapshot = await forceReconcile({
-      settings: DEFAULT_SETTINGS,
-      consumedMl: 500,
-      source: "first",
-    });
+  it("recomputes after a drink and enforces a 30-minute quiet period", async () => {
+    await forceReconcile({ settings: DEFAULT_SETTINGS, consumedMl: 500, source: "first" });
+    const loggedAt = new Date(2026, 8, 21, 8, 15);
+    vi.setSystemTime(loggedAt);
 
-    mockGetItem.mockImplementation(async (key: string) => {
-      if (key === "siply:schedule_snapshot:v1") {
-        return JSON.stringify(snapshot);
-      }
-      return null;
-    });
-
-    mockRescheduleNotifications.mockClear();
-
-    // Second call with different consumedMl
     const result = await reconcile({
       settings: DEFAULT_SETTINGS,
       consumedMl: 750,
+      lastLogAt: loggedAt.toISOString(),
       source: "drink_logged",
     });
 
-    expect(result).not.toBeNull();
-    expect(result!.consumedMlAtCompute).toBe(750);
-    expect(mockRescheduleNotifications).toHaveBeenCalledTimes(1);
+    expect(result.consumedMlAtCompute).toBe(750);
+    expect(new Date(result.slots[0].time).getTime()).toBeGreaterThanOrEqual(
+      loggedAt.getTime() + 30 * 60_000
+    );
   });
 
-  it("reschedules when settings change", async () => {
-    const snapshot = await forceReconcile({
+  it("recomputes local clock times after a timezone-offset change", async () => {
+    const first = await forceReconcile({
       settings: DEFAULT_SETTINGS,
       consumedMl: 500,
       source: "first",
     });
+    const persisted = JSON.parse(storage.get(SCHEDULE_SNAPSHOT_KEY)!);
+    persisted.timezoneOffsetMinutes += 60;
+    storage.set(SCHEDULE_SNAPSHOT_KEY, JSON.stringify(persisted));
 
-    mockGetItem.mockImplementation(async (key: string) => {
-      if (key === "siply:schedule_snapshot:v1") {
-        return JSON.stringify(snapshot);
-      }
-      return null;
+    const refreshed = await reconcile({
+      settings: DEFAULT_SETTINGS,
+      consumedMl: 500,
+      source: "timezone_change",
+    });
+    expect(refreshed.revision).toBe(first.revision + 1);
+  });
+
+  it("spreads four normal nudge families across each hydration day", async () => {
+    const snapshot = await forceReconcile({
+      settings: { ...DEFAULT_SETTINGS, urgencyExtraNudgeEnabled: false },
+      consumedMl: 0,
+      source: "nudge_test",
+    });
+    const nudged = snapshot.slots.filter(
+      (slot) => slot.time.startsWith("2026-09-21") && slot.nudgeMode === "normal"
+    );
+
+    expect(nudged).toHaveLength(4);
+    expect(nudged.every((slot) => slot.nudgeOffsets.join(",") === "5,10")).toBe(true);
+    expect(new Set(nudged.map((slot) => new Date(slot.time).getHours())).size).toBeGreaterThan(1);
+  });
+
+  it("adds at most one urgency nudge family only when explicitly enabled", async () => {
+    const snapshot = await forceReconcile({
+      settings: { ...DEFAULT_SETTINGS, urgencyExtraNudgeEnabled: true },
+      consumedMl: 0,
+      source: "urgency_test",
+    });
+    const todaySlots = snapshot.slots.filter((slot) => slot.time.startsWith("2026-09-21"));
+
+    expect(todaySlots.filter((slot) => slot.nudgeMode === "normal")).toHaveLength(4);
+    expect(todaySlots.filter((slot) => slot.nudgeMode === "urgency")).toHaveLength(1);
+  });
+
+  it("preserves the last verified plan when a replacement cannot be installed", async () => {
+    const first = await forceReconcile({ settings: DEFAULT_SETTINGS, consumedMl: 500, source: "first" });
+    mockApplyNotificationPlan.mockResolvedValueOnce({
+      success: false,
+      status: "failed",
+      requested: 3,
+      scheduled: 0,
+      failed: 3,
+      desiredCount: 3,
+      pendingIds: [],
+      verifiedBaseIds: [],
+      verifiedFamilyIds: [],
+      pendingFamilyIds: first.verifiedFamilyIds,
+      errors: ["temporary native failure"],
     });
 
-    mockRescheduleNotifications.mockClear();
-
-    // Change a setting
-    const newSettings = { ...DEFAULT_SETTINGS, targetLiters: 4.0 };
-    const result = await reconcile({
-      settings: newSettings,
+    const replacement = await forceReconcile({
+      settings: { ...DEFAULT_SETTINGS, targetLiters: 3.5 },
       consumedMl: 500,
       source: "settings_change",
     });
 
-    expect(result).not.toBeNull();
-    expect(mockRescheduleNotifications).toHaveBeenCalledTimes(1);
-  });
-});
+    expect(replacement.health).toBe("partially_scheduled");
+    expect(replacement.slots.map((slot) => slot.familyId)).toEqual(
+      first.slots.map((slot) => slot.familyId)
+    );
+    expect(replacement.planId).toBe(first.planId);
 
-describe("scheduleEngine — forceReconcile", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetItem.mockResolvedValue(null);
-    mockSetItem.mockResolvedValue(undefined);
-    mockRescheduleNotifications.mockResolvedValue({
-      success: true,
-      scheduled: 5,
-      requested: 5,
-      failed: 0,
-      errors: [],
-    });
-  });
-
-  it("always reschedules regardless of snapshot freshness", async () => {
-    // Create a fresh snapshot
-    await forceReconcile({
-      settings: DEFAULT_SETTINGS,
+    const recovered = await reconcile({
+      settings: { ...DEFAULT_SETTINGS, targetLiters: 3.5 },
       consumedMl: 500,
-      source: "first",
+      source: "automatic_retry",
     });
-
-    mockRescheduleNotifications.mockClear();
-
-    // Force reconcile with same inputs — should still reschedule
-    const result = await forceReconcile({
-      settings: DEFAULT_SETTINGS,
-      consumedMl: 500,
-      source: "force",
-    });
-
-    expect(result).not.toBeNull();
-    expect(mockRescheduleNotifications).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("scheduleEngine — serialization", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetItem.mockResolvedValue(null);
-    mockSetItem.mockResolvedValue(undefined);
-    mockRescheduleNotifications.mockResolvedValue({
-      success: true,
-      scheduled: 5,
-      requested: 5,
-      failed: 0,
-      errors: [],
-    });
-  });
-
-  it("serializes concurrent calls (no parallel execution)", async () => {
-    const callOrder: number[] = [];
-    let callCount = 0;
-
-    mockRescheduleNotifications.mockImplementation(async () => {
-      const myIndex = ++callCount;
-      callOrder.push(myIndex);
-      // Simulate async work
-      await new Promise((r) => setTimeout(r, 10));
-      return { success: true, scheduled: 1, requested: 1, failed: 0, errors: [] };
-    });
-
-    // Launch 3 concurrent reconciles
-    const results = await Promise.all([
-      forceReconcile({ settings: DEFAULT_SETTINGS, consumedMl: 100, source: "a" }),
-      forceReconcile({ settings: DEFAULT_SETTINGS, consumedMl: 200, source: "b" }),
-      forceReconcile({ settings: DEFAULT_SETTINGS, consumedMl: 300, source: "c" }),
-    ]);
-
-    // All should complete
-    expect(results.every((r) => r !== null)).toBe(true);
-    // They should have been serialized (executed in order)
-    expect(callOrder).toEqual([1, 2, 3]);
-  });
-});
-
-describe("scheduleEngine — weekend awareness", () => {
-  it("detects relaxed day when weekend intake is significantly lower", () => {
-    const history: HydrationHistory = {};
-    const now = new Date("2026-09-20T12:00:00"); // Saturday
-
-    // Create 30 days of history with lower weekend intake
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const key = getDateKey(d);
-      const dow = d.getDay();
-      const isWeekend = dow === 0 || dow === 6;
-      history[key] = {
-        date: key,
-        totalMl: isWeekend ? 1500 : 2800, // Weekend avg 1500, weekday avg 2800
-        goalMl: 3000,
-        goodThresholdMl: 1800,
-        logHours: Array(24).fill(0),
-      };
-    }
-
-    expect(isRelaxedDay(history, now)).toBe(true);
-  });
-
-  it("returns false on a weekday", () => {
-    const history: HydrationHistory = {};
-    const now = new Date("2026-09-21T12:00:00"); // Monday
-
-    expect(isRelaxedDay(history, now)).toBe(false);
-  });
-
-  it("returns false when insufficient data", () => {
-    const history: HydrationHistory = {};
-    const now = new Date("2026-09-20T12:00:00"); // Saturday
-
-    expect(isRelaxedDay(history, now)).toBe(false);
+    expect(recovered.health).toBe("scheduled");
+    expect(recovered.revision).toBe(first.revision + 1);
+    expect(recovered.planId).not.toBe(first.planId);
   });
 });

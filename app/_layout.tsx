@@ -11,29 +11,35 @@ import { ThemeProvider } from "../src/shared/theme/ThemeProvider";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   useHydrationStore,
+  waitForHydrationPersistence,
 } from "../src/features/hydration/state/hydrationStore";
 import {
   configureNotificationChannels,
   configureNotificationActions,
+  cancelNotificationFamily,
   parseSiplyNotificationId,
   snoozeNotification,
 } from "../src/features/hydration/notifications/notifier";
 import {
   reconcile as scheduleReconcile,
   forceReconcile as scheduleForceReconcile,
+  markReminderFamilyHandled,
   refreshSnapshotCache,
 } from "../src/features/hydration/notifications/scheduleEngine";
+import { consumePreciseTimingStatusChange } from "../src/features/hydration/notifications/preciseTiming";
 import { registerBackgroundFetchAsync } from "../src/features/hydration/notifications/backgroundTask";
 import { useAppForeground } from "../src/shared/hooks/useAppForeground";
 import { useDayRollover } from "../src/shared/hooks/useDayRollover";
 import {
   NOTIFICATION_ACTION_LOG,
+  NOTIFICATION_ACTION_DISMISS,
   NOTIFICATION_ACTION_SNOOZE,
   NOTIFICATION_ACTION_SKIP,
   NOTIFICATION_ACTION_VIEW_HISTORY,
 } from "../src/core/constants";
 import { ensureFirstLaunchAt } from "../src/core/storage/storage";
 import { notificationActionDeduplicator } from "../src/features/hydration/notifications/actionDedup";
+import { recordNotificationDiagnostic } from "../src/features/hydration/notifications/diagnostics";
 import { darkColors, lightColors } from "../src/shared/theme/tokens";
 import { useTheme } from "../src/shared/theme/ThemeProvider";
 import { NetworkStatusProvider } from "../src/shared/network/NetworkStatusProvider";
@@ -59,6 +65,7 @@ const RootLayoutNav = () => {
   const settings = useHydrationStore((s) => s.settings);
   const progress = useHydrationStore((s) => s.progress);
   const quickLog = useHydrationStore((s) => s.quickLog);
+  const history = useHydrationStore((s) => s.history);
   const onboarding = useHydrationStore((s) => s.onboarding);
   const hydrated = useHydrationStore((s) => s.hydrated);
   const refreshProgressDate = useHydrationStore((s) => s.refreshProgressDate);
@@ -101,8 +108,12 @@ const RootLayoutNav = () => {
   }, []);
 
   useEffect(() => {
-    void configureNotificationChannels();
-    void configureNotificationActions();
+    void configureNotificationChannels().catch((error) => {
+      console.warn("Siply: failed to configure notification channels", error);
+    });
+    void configureNotificationActions().catch((error) => {
+      console.warn("Siply: failed to configure notification actions", error);
+    });
     void registerBackgroundFetchAsync();
     // Pre-populate the snapshot cache so useHydrationPlan can read it
     void refreshSnapshotCache();
@@ -149,22 +160,33 @@ const RootLayoutNav = () => {
   }, [expectedRoot, hydrated, router, segments]);
 
   // Schedule engine reconcile: fires when hydration state changes meaningfully.
-  // The engine's staleness check prevents unnecessary recomputation.
+  // Unchanged inputs verify/repair the existing OS plan without shifting it.
   useEffect(() => {
     if (!hydrated || !onboarding.completed) {
       return;
     }
-    void scheduleReconcile({
-      settings,
-      consumedMl: progress.consumedMl,
-      lastLogAt: quickLog.lastLogAt,
-      source: "state_change",
-    });
+    void waitForHydrationPersistence()
+      .catch((error) => {
+        console.warn("Siply: hydration persistence did not settle before scheduling", error);
+      })
+      .then(() => scheduleReconcile({
+        settings,
+        consumedMl: progress.consumedMl,
+        lastLogAt: quickLog.lastLogAt,
+        source: "state_change",
+        history,
+      }))
+      .catch((error) => {
+        console.warn("Siply: state-change reminder reconcile failed", error);
+      });
   }, [
     hydrated,
     onboarding.completed,
     progress.consumedMl,
     progress.date,
+    quickLog.lastLogAt,
+    settings,
+    history,
   ]);
 
   useEffect(() => {
@@ -186,12 +208,30 @@ const RootLayoutNav = () => {
         const isNew = await notificationActionDeduplicator.claimIfUnhandled(
           notificationId
         );
-        void Notifications.dismissNotificationAsync(notificationId);
+        void Notifications.dismissNotificationAsync(notificationId).catch(() => {});
         return isNew;
       };
 
+      if (action === NOTIFICATION_ACTION_DISMISS) {
+        const familyId = response.notification.request.content.data?.familyId;
+        if (typeof familyId === "string") {
+          await recordNotificationDiagnostic({
+            type: "action",
+            at: new Date().toISOString(),
+            action: "dismissed",
+            familyId,
+          }).catch(() => {});
+        }
+        return;
+      }
+
       if (action === NOTIFICATION_ACTION_SKIP) {
-        await claimNotification();
+        if (await claimNotification()) {
+          const familyId = response.notification.request.content.data?.familyId;
+          if (typeof familyId === "string") {
+            await markReminderFamilyHandled(familyId, "skipped");
+          }
+        }
         return;
       }
 
@@ -201,8 +241,12 @@ const RootLayoutNav = () => {
         }
         const meta = parseSiplyNotificationId(notificationId);
         const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
+        const familyId = response.notification.request.content.data?.familyId;
         if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
-          void snoozeNotification(amount, settings);
+          await snoozeNotification(amount, settings);
+          if (typeof familyId === "string") {
+            await markReminderFamilyHandled(familyId, "snoozed");
+          }
         }
         return;
       }
@@ -224,7 +268,11 @@ const RootLayoutNav = () => {
       const meta = parseSiplyNotificationId(notificationId);
       const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
       if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
-        void addConsumed(amount);
+        const familyId = response.notification.request.content.data?.familyId;
+        if (typeof familyId === "string") {
+          await cancelNotificationFamily(familyId).catch(() => {});
+        }
+        await addConsumed(amount);
       }
     },
     [addConsumed, router, settings]
@@ -233,13 +281,17 @@ const RootLayoutNav = () => {
   const lastResponse = Notifications.useLastNotificationResponse();
   useEffect(() => {
     if (lastResponse) {
-      void processNotificationResponse(lastResponse);
+      void processNotificationResponse(lastResponse).catch((error) => {
+        console.warn("Siply: notification response handling failed", error);
+      });
     }
   }, [lastResponse, processNotificationResponse]);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => void processNotificationResponse(response)
+      (response) => void processNotificationResponse(response).catch((error) => {
+        console.warn("Siply: notification response handling failed", error);
+      })
     );
     return () => subscription.remove();
   }, [processNotificationResponse]);
@@ -247,17 +299,24 @@ const RootLayoutNav = () => {
   useAppForeground(() => {
     void refreshProgressDate().then((didChange) => {
       if (hydrated && onboarding.completed) {
-        // Use forceReconcile on day change, regular reconcile otherwise.
-        // The engine's staleness check prevents redundant rescheduling.
-        const fn = didChange ? scheduleForceReconcile : scheduleReconcile;
-        void fn({
-          settings,
-          consumedMl: didChange ? 0 : progress.consumedMl,
-          lastLogAt: didChange ? null : quickLog.lastLogAt,
-          source: didChange ? "day_rollover" : "app_foreground",
+        // Day changes and exact-alarm capability changes reinstall the plan.
+        // Ordinary foregrounding only verifies/repairs without moving times.
+        void consumePreciseTimingStatusChange().then((preciseTimingChanged) => {
+          const fn = didChange || preciseTimingChanged ? scheduleForceReconcile : scheduleReconcile;
+          return fn({
+            settings,
+            consumedMl: didChange ? 0 : progress.consumedMl,
+            lastLogAt: didChange ? null : quickLog.lastLogAt,
+            source: didChange ? "day_rollover" : "app_foreground",
+            history,
+          });
+        }).catch((error) => {
+          console.warn("Siply: foreground reminder reconcile failed", error);
         });
         void ensureNotificationPermission();
       }
+    }).catch((error) => {
+      console.warn("Siply: foreground day refresh failed", error);
     });
   });
 

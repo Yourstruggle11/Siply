@@ -67,6 +67,7 @@ export const useHydrationPlan = (): HydrationPlan => {
       targetMet,
       remainingMl,
       consumedMl: progress.consumedMl,
+      reminderHealth: snapshot?.health,
     };
   }, [settings, progress.consumedMl, now, snapshot]);
 };

@@ -14,6 +14,10 @@ export type HydrationSettings = {
   gentleGoalEnabled: boolean;
   gentleGoalThreshold: number;
   tone?: ReminderTone;
+  /** Optional learned weekend timing. Disabled until enough history exists. */
+  weekendAwarenessEnabled: boolean;
+  /** Allows one additional two-follow-up nudge family while behind pace. */
+  urgencyExtraNudgeEnabled: boolean;
 };
 
 export type HydrationProgress = {
@@ -78,4 +82,5 @@ export type HydrationPlan = {
   targetMet: boolean;
   remainingMl: number;
   consumedMl: number;
+  reminderHealth?: "scheduled" | "partially_scheduled" | "schedule_failed" | "target_met" | "outside_window" | "day_complete" | "invalid_window";
 };

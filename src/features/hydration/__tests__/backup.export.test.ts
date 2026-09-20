@@ -47,11 +47,12 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 import * as Sharing from "expo-sharing";
 import { exportBackup } from "../backup/export";
 import { useHydrationStore } from "../state/hydrationStore";
-import { SCHEMA_VERSION } from "../../../core/constants";
+import { DEFAULT_SETTINGS, SCHEMA_VERSION } from "../../../core/constants";
 
 // ── Seed store state for tests ────────────────────────────────────────────────
 const SEED_STATE = {
   settings: {
+    ...DEFAULT_SETTINGS,
     targetLiters: 3.0,
     windowStart: "07:00",
     windowEnd: "23:00",

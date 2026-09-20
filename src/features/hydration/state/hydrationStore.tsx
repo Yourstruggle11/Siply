@@ -117,6 +117,11 @@ export const migrateStorage = async (persistedState: unknown, version: number) =
     // No-op for v2→v3: entries are undefined on old days by design.
     // Future migrations (e.g. v3→v4) would add transformation logic here.
   }
+  // v3 → v4 adds opt-in smart-reminder preferences. normalizeSettings
+  // supplies false for both fields, preserving the previous behavior.
+  if (version < 4) {
+    // No additional transform is required beyond normalization above.
+  }
 
   return normalised as any;
 };

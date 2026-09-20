@@ -132,6 +132,22 @@ describe("computeReminderSchedule — mlPerReminder cap", () => {
       expect(slot.mlPerReminder).toBeGreaterThan(0);
     }
   });
+
+  it("precomputes later asks for the no-new-log path after ignored reminders", () => {
+    const now = today(12, 0);
+    const schedule = computeReminderSchedule(
+      now,
+      makeSettings({ targetLiters: 3, windowStart: "07:00", windowEnd: "23:00" }),
+      1000
+    );
+    const sameDay = schedule.slots.filter((slot) => slot.time.getDate() === now.getDate());
+    expect(sameDay.length).toBeGreaterThan(1);
+    for (let index = 1; index < sameDay.length; index += 1) {
+      expect(sameDay[index].mlPerReminder).toBeGreaterThanOrEqual(
+        sameDay[index - 1].mlPerReminder
+      );
+    }
+  });
 });
 
 describe("computeReminderSchedule — Last Call behavior", () => {
@@ -163,7 +179,9 @@ describe("computeReminderSchedule — Last Call behavior", () => {
     const consumedMl = 3000 - 10; // only 10ml remaining, < sipMl of 15
     const schedule = computeReminderSchedule(today(22, 55), settings, consumedMl);
 
-    const lastCallSlots = schedule.slots.filter((s) => s.intervalMinutes === 0);
+    const lastCallSlots = schedule.slots.filter(
+      (s) => s.intervalMinutes === 0 && s.time.getDate() === today(22, 55).getDate()
+    );
     expect(lastCallSlots.length).toBe(0);
   });
 
@@ -243,6 +261,37 @@ describe("computeReminderSchedule — edge cases", () => {
 
     expect(schedule.status).toBe("no_window");
     expect(schedule.slots.length).toBe(0);
+  });
+
+  it("rejects an overnight active window until Hydration Day is supported", () => {
+    const settings = makeSettings({ windowStart: "22:00", windowEnd: "07:00" });
+    const schedule = computeReminderSchedule(today(23, 0), settings, 0);
+    expect(schedule.status).toBe("no_window");
+    expect(schedule.slots).toHaveLength(0);
+  });
+
+  it("keeps every same-day reminder at least 30 minutes after a drink", () => {
+    const loggedAt = today(16, 15);
+    const schedule = computeReminderSchedule(
+      loggedAt,
+      makeSettings({ windowStart: "07:00", windowEnd: "23:00" }),
+      1200,
+      loggedAt.toISOString()
+    );
+    const earliestAllowed = loggedAt.getTime() + 30 * 60_000;
+    const sameDay = schedule.slots.filter((slot) => slot.time.getDate() === loggedAt.getDate());
+    expect(sameDay.every((slot) => slot.time.getTime() >= earliestAllowed)).toBe(true);
+  });
+
+  it("does not create an aggressive reminder after the final last-call boundary", () => {
+    const now = today(22, 31);
+    const schedule = computeReminderSchedule(
+      now,
+      makeSettings({ windowStart: "07:00", windowEnd: "23:00" }),
+      1000
+    );
+    const sameDay = schedule.slots.filter((slot) => slot.time.getDate() === now.getDate());
+    expect(sameDay).toHaveLength(0);
   });
 
   it("handles very short remaining window (<30 min)", () => {

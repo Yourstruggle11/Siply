@@ -57,6 +57,14 @@ export const normalizeSettings = (input: Partial<HydrationSettings> | null): Hyd
     gentleGoalEnabled: toBoolean(base.gentleGoalEnabled, DEFAULT_SETTINGS.gentleGoalEnabled),
     gentleGoalThreshold: toNumber(base.gentleGoalThreshold, DEFAULT_GENTLE_GOAL_THRESHOLD),
     tone: toReminderTone(base.tone, DEFAULT_SETTINGS.tone!),
+    weekendAwarenessEnabled: toBoolean(
+      base.weekendAwarenessEnabled,
+      DEFAULT_SETTINGS.weekendAwarenessEnabled
+    ),
+    urgencyExtraNudgeEnabled: toBoolean(
+      base.urgencyExtraNudgeEnabled,
+      DEFAULT_SETTINGS.urgencyExtraNudgeEnabled
+    ),
   };
 };
 

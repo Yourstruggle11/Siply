@@ -218,6 +218,7 @@ export async function processBackupUri(
       consumedMl: normProgress.consumedMl,
       lastLogAt: normQuickLog.lastLogAt,
       source: "backup_import",
+      history: mergedHistory,
     });
   } catch {
     // Reschedule failure should not fail the import — silently ignore.

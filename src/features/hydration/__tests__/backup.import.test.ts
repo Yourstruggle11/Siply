@@ -42,6 +42,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { importBackup, processBackupUri } from "../backup/import";
 import { useHydrationStore } from "../state/hydrationStore";
 import * as scheduleEngine from "../notifications/scheduleEngine";
+import { DEFAULT_SETTINGS } from "../../../core/constants";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ const VALID_BACKUP_JSON = JSON.stringify({
 
 const INITIAL_STATE = {
   settings: {
+    ...DEFAULT_SETTINGS,
     targetLiters: 3.0,
     windowStart: "07:00",
     windowEnd: "23:00",

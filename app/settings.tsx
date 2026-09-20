@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Alert, Image, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, AppState, Image, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
@@ -14,10 +14,9 @@ import { ENABLE_DIAGNOSTICS, TAGLINE } from "../src/core/constants";
 import { useHydrationStore } from "../src/features/hydration/state/hydrationStore";
 import { useNotificationPermission } from "../src/shared/hooks/useNotificationPermission";
 import {
-  cancelAllNotifications,
-  rescheduleNotifications,
   sendTestNotification,
 } from "../src/features/hydration/notifications/notifier";
+import { reconcile } from "../src/features/hydration/notifications/scheduleEngine";
 import {
   clearNotificationDiagnostics,
   loadNotificationDiagnostics,
@@ -37,6 +36,11 @@ import {
   selectAppIcon,
   supportsAppIconSelection,
 } from "../src/shared/appIcon";
+import { analyzeWeekendAwareness, WEEKEND_MIN_WEEKS } from "../src/features/hydration/domain/schedulingIntelligence";
+import {
+  getPreciseTimingStatus,
+  openPreciseTimingSettings,
+} from "../src/features/hydration/notifications/preciseTiming";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -45,6 +49,7 @@ export default function SettingsScreen() {
   const settings = useHydrationStore((s) => s.settings);
   const progress = useHydrationStore((s) => s.progress);
   const quickLog = useHydrationStore((s) => s.quickLog);
+  const history = useHydrationStore((s) => s.history);
   const updateSettings = useHydrationStore((s) => s.updateSettings);
   const resetToday = useHydrationStore((s) => s.resetToday);
   const { preferences, setAutomaticInsightsEnabled, configuredProviders } = useAiSettings();
@@ -67,6 +72,20 @@ export default function SettingsScreen() {
   const [channels, setChannels] = useState<Notifications.NotificationChannel[] | null>(null);
   const [scheduledCount, setScheduledCount] = useState(0);
   const [scheduledNext, setScheduledNext] = useState<string[]>([]);
+  const [preciseTiming, setPreciseTiming] = useState({ supported: false, enabled: false });
+  const weekendAwareness = useMemo(() => analyzeWeekendAwareness(history), [history]);
+
+  const refreshPreciseTiming = React.useCallback(async () => {
+    setPreciseTiming(await getPreciseTimingStatus());
+  }, []);
+
+  useEffect(() => {
+    void refreshPreciseTiming();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshPreciseTiming();
+    });
+    return () => subscription.remove();
+  }, [refreshPreciseTiming]);
 
   const handleAppIconChange = async (icon: AppIconId) => {
     if (!supportsAppIconSelection || changingAppIcon || selectedAppIcon === icon) return;
@@ -175,6 +194,12 @@ export default function SettingsScreen() {
       if (diagnostics.lastTest.error) {
         lines.push(`Test error: ${diagnostics.lastTest.error}`);
       }
+    }
+    if (diagnostics?.events.length) {
+      lines.push(`Recent scheduler events (${diagnostics.events.length}, retained for up to 7 days):`);
+      diagnostics.events.slice(-50).forEach((event) => {
+        lines.push(`- ${event.at} | ${event.type} | ${JSON.stringify(event)}`);
+      });
     }
     if (channels && channels.length) {
       lines.push("Android channels:");
@@ -345,7 +370,7 @@ export default function SettingsScreen() {
           </View>
           <ToggleRow
             label="Nudges"
-            helper="Extra reminders after 5 and 10 minutes."
+            helper="Adds +5 and +10 minute follow-ups to as many as four reminder moments across the day."
             value={settings.escalationEnabled}
             onValueChange={(value) => updateSettings({ escalationEnabled: value })}
           />
@@ -367,6 +392,69 @@ export default function SettingsScreen() {
                   onPress={permission.canAskAgain ? requestPermission : openSettings}
                 />
               ) : null}
+            </View>
+          ) : null}
+        </AnimatedCard>
+
+        <AnimatedCard style={styles.section} delay={210}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Smart reminders</Text>
+          <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Optional refinements that adapt reminder timing without changing your target or active window.</Text>
+          <ToggleRow
+            label="Weekend rhythm"
+            helper={weekendAwareness.eligible
+              ? "Uses your established weekend timing while staying inside your active window."
+              : weekendAwareness.reason === "no_difference"
+                ? "Your weekday and weekend routines currently look similar."
+                : `Still learning · ${weekendAwareness.observedWeeks} of ${WEEKEND_MIN_WEEKS} weeks observed`}
+            value={settings.weekendAwarenessEnabled}
+            disabled={!weekendAwareness.eligible && !settings.weekendAwarenessEnabled}
+            onValueChange={(value) => {
+              if (value && !weekendAwareness.eligible) {
+                Alert.alert(
+                  "Still learning your routine",
+                  `Siply needs at least ${WEEKEND_MIN_WEEKS} weeks, six weekend days, and twelve weekdays with logs before Weekend rhythm becomes available.`
+                );
+                return;
+              }
+              void updateSettings({ weekendAwarenessEnabled: value });
+            }}
+          />
+          {!weekendAwareness.eligible && !settings.weekendAwarenessEnabled ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => Alert.alert(
+                "Still learning your routine",
+                weekendAwareness.reason === "no_difference"
+                  ? "Siply has enough history, but your weekday and weekend start times are currently too similar to make a separate schedule useful."
+                  : `Siply needs at least ${WEEKEND_MIN_WEEKS} weeks, six weekend days, and twelve weekdays with logs before Weekend rhythm becomes available.`
+              )}
+            >
+              <Text style={[styles.helper, { color: theme.colors.accent }]}>Why is this unavailable?</Text>
+            </Pressable>
+          ) : null}
+          <ToggleRow
+            label="Extra catch-up nudge"
+            helper={settings.escalationEnabled
+              ? "Allows one additional +5/+10 minute nudge family when you are substantially behind pace."
+              : "Turn on Nudges first to use this option."}
+            value={settings.escalationEnabled && settings.urgencyExtraNudgeEnabled}
+            disabled={!settings.escalationEnabled}
+            onValueChange={(value) => void updateSettings({ urgencyExtraNudgeEnabled: value })}
+          />
+          {Platform.OS === "android" && preciseTiming.supported ? (
+            <View style={styles.permissionRow}>
+              <View style={styles.smartSettingHeader}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={[styles.smartSettingTitle, { color: theme.colors.textPrimary }]}>Precise reminder timing</Text>
+                  <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>Lets Android deliver reminders more accurately during idle and battery-saving periods. Device settings can still cause delays.</Text>
+                </View>
+                <Text style={[styles.smartSettingStatus, { color: preciseTiming.enabled ? theme.colors.accent : theme.colors.textSecondary }]}>{preciseTiming.enabled ? "Enabled" : "Not enabled"}</Text>
+              </View>
+              <Button
+                label={preciseTiming.enabled ? "Manage precise timing" : "Enable precise timing"}
+                variant="secondary"
+                onPress={() => void openPreciseTimingSettings()}
+              />
             </View>
           ) : null}
         </AnimatedCard>
@@ -450,12 +538,13 @@ export default function SettingsScreen() {
           <View style={styles.actionGroup}>
             <Button
               label="Reschedule notifications"
-              onPress={() => void rescheduleNotifications(settings, progress.consumedMl, new Date(), quickLog.lastLogAt)}
-            />
-            <Button
-              label="Cancel all notifications"
-              variant="secondary"
-              onPress={() => void cancelAllNotifications()}
+              onPress={() => void reconcile({
+                settings,
+                consumedMl: progress.consumedMl,
+                lastLogAt: quickLog.lastLogAt,
+                history,
+                source: "manual_repair",
+              })}
             />
             <Button
               label="Test notification (sound)"
@@ -558,6 +647,18 @@ const styles = StyleSheet.create({
   },
   permissionRow: {
     gap: 8,
+  },
+  smartSettingHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  smartSettingTitle: {
+    fontSize: 16,
+  },
+  smartSettingStatus: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   optionRow: {
     flexDirection: "row",
