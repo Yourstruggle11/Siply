@@ -13,10 +13,9 @@ import { useTheme } from "../src/shared/theme/ThemeProvider";
 import { ENABLE_DIAGNOSTICS, TAGLINE } from "../src/core/constants";
 import { useHydrationStore } from "../src/features/hydration/state/hydrationStore";
 import { useNotificationPermission } from "../src/shared/hooks/useNotificationPermission";
-import {
-  sendTestNotification,
-} from "../src/features/hydration/notifications/notifier";
+import { sendTestNotificationDetailed } from "../src/features/hydration/notifications/notifier";
 import { reconcile } from "../src/features/hydration/notifications/scheduleEngine";
+import { useScheduleSnapshot } from "../src/shared/hooks/useScheduleSnapshot";
 import {
   clearNotificationDiagnostics,
   loadNotificationDiagnostics,
@@ -64,16 +63,21 @@ export default function SettingsScreen() {
   const [appIconError, setAppIconError] = useState<string | null>(null);
 
   const { permission, requestPermission, openSettings } = useNotificationPermission();
+  const { snapshot: scheduleSnapshot, refresh: refreshScheduleSnapshot } = useScheduleSnapshot();
   const [diagnostics, setDiagnostics] = useState<NotificationDiagnosticsState | null>(null);
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticReadError, setDiagnosticReadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [notificationAction, setNotificationAction] = useState<"reschedule" | "test" | null>(null);
+  const [notificationActionStatus, setNotificationActionStatus] = useState<string | null>(null);
   const [permissionsSnapshot, setPermissionsSnapshot] = useState<Notifications.NotificationPermissionsStatus | null>(null);
   const [channels, setChannels] = useState<Notifications.NotificationChannel[] | null>(null);
   const [scheduledCount, setScheduledCount] = useState(0);
   const [scheduledNext, setScheduledNext] = useState<string[]>([]);
   const [preciseTiming, setPreciseTiming] = useState({ supported: false, enabled: false });
   const weekendAwareness = useMemo(() => analyzeWeekendAwareness(history), [history]);
+  const showNotificationDiagnostics = ENABLE_DIAGNOSTICS;
 
   const refreshPreciseTiming = React.useCallback(async () => {
     setPreciseTiming(await getPreciseTimingStatus());
@@ -132,14 +136,30 @@ export default function SettingsScreen() {
 
   const refreshDiagnostics = async () => {
     setDiagnosticLoading(true);
+    setDiagnosticReadError(null);
     try {
-      const [permissionsState, scheduled, stored] = await Promise.all([
+      const [permissionsResult, scheduledResult, storedResult] = await Promise.allSettled([
         Notifications.getPermissionsAsync(),
         Notifications.getAllScheduledNotificationsAsync(),
         loadNotificationDiagnostics(),
       ]);
-      setPermissionsSnapshot(permissionsState);
-      setDiagnostics(stored);
+
+      const readErrors: string[] = [];
+      if (permissionsResult.status === "fulfilled") {
+        setPermissionsSnapshot(permissionsResult.value);
+      } else {
+        readErrors.push(`permissions: ${String(permissionsResult.reason)}`);
+      }
+      if (storedResult.status === "fulfilled") {
+        setDiagnostics(storedResult.value);
+      } else {
+        readErrors.push(`stored diagnostics: ${String(storedResult.reason)}`);
+      }
+
+      const scheduled = scheduledResult.status === "fulfilled" ? scheduledResult.value : [];
+      if (scheduledResult.status === "rejected") {
+        readErrors.push(`scheduled notifications: ${String(scheduledResult.reason)}`);
+      }
 
       const dates = scheduled
         .map((item) => {
@@ -155,13 +175,102 @@ export default function SettingsScreen() {
       setScheduledNext(dates.slice(0, 5).map((date) => date.toLocaleString()));
 
       if (Platform.OS === "android") {
-        const channelList = await Notifications.getNotificationChannelsAsync();
-        setChannels(channelList ?? []);
+        try {
+          const channelList = await Notifications.getNotificationChannelsAsync();
+          setChannels(channelList ?? []);
+        } catch (error) {
+          readErrors.push(`notification channels: ${error instanceof Error ? error.message : String(error)}`);
+          setChannels(null);
+        }
       } else {
         setChannels(null);
       }
+      setDiagnosticReadError(readErrors.length ? readErrors.join(" | ") : null);
     } finally {
       setDiagnosticLoading(false);
+    }
+  };
+
+  const handleManualReschedule = async () => {
+    if (notificationAction) return;
+    setNotificationAction("reschedule");
+    setNotificationActionStatus(null);
+    try {
+      const result = await reconcile({
+        settings,
+        consumedMl: progress.consumedMl,
+        lastLogAt: quickLog.lastLogAt,
+        history,
+        source: "manual_repair",
+      });
+      await Promise.all([refreshDiagnostics(), refreshScheduleSnapshot()]);
+
+      if (result.health === "schedule_failed") {
+        const detail = result.errors[0] ?? "The device scheduler did not accept the reminder plan.";
+        const message = "Siply couldn't verify the reminder schedule. It will retry automatically.";
+        setNotificationActionStatus(message);
+        Alert.alert(
+          "Reminders could not be restored",
+          ENABLE_DIAGNOSTICS
+            ? `${message}\n\nTechnical details: ${detail}\n\nUse Export diagnostics below to share the report.`
+            : message
+        );
+      } else if (result.health === "partially_scheduled") {
+        const detail = result.errors[0] ?? "Only part of the reminder plan was accepted.";
+        const message = "Some reminders were restored. Siply will retry the remaining reminders automatically.";
+        setNotificationActionStatus(message);
+        Alert.alert(
+          "Some reminders were restored",
+          ENABLE_DIAGNOSTICS ? `${message}\n\nTechnical details: ${detail}` : message
+        );
+      } else {
+        setNotificationActionStatus(`Reminder schedule verified (${result.scheduledCount}/${result.desiredCount}).`);
+        Alert.alert("Reminders restored", "Siply verified the current reminder schedule with your device.");
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = "Siply couldn't verify the reminder schedule. It will retry automatically.";
+      setNotificationActionStatus(message);
+      await Promise.all([refreshDiagnostics(), refreshScheduleSnapshot()]);
+      Alert.alert(
+        "Reminders could not be restored",
+        ENABLE_DIAGNOSTICS
+          ? `${message}\n\nTechnical details: ${detail}\n\nUse Export diagnostics below to share the report.`
+          : message
+      );
+    } finally {
+      setNotificationAction(null);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (notificationAction) return;
+    setNotificationAction("test");
+    setNotificationActionStatus(null);
+    try {
+      const result = await sendTestNotificationDetailed();
+      await Promise.all([refreshDiagnostics(), refreshScheduleSnapshot()]);
+      if (result.success) {
+        setNotificationActionStatus("Test notification scheduled. It should appear within a few seconds.");
+        Alert.alert("Test notification scheduled", "It should appear within a few seconds.");
+        return;
+      }
+
+      const detail = result.error ?? "The device did not accept the test notification.";
+      const message = result.reason === "permission_denied"
+        ? "Notifications are disabled for Siply. Enable notification permission and try again."
+        : result.reason === "queue_full"
+          ? "Siply's notification queue is currently full."
+          : "Your device couldn't schedule the test notification.";
+      setNotificationActionStatus(message);
+      Alert.alert(
+        "Test notification failed",
+        ENABLE_DIAGNOSTICS
+          ? `${message}\n\nTechnical details: ${detail}\n\nUse Export diagnostics below to share the report.`
+          : message
+      );
+    } finally {
+      setNotificationAction(null);
     }
   };
 
@@ -179,8 +288,25 @@ export default function SettingsScreen() {
       lines.push("Permissions: unknown");
     }
     lines.push(`Scheduled count: ${scheduledCount}`);
+    lines.push(`Precise timing: supported=${preciseTiming.supported ? "yes" : "no"} enabled=${preciseTiming.enabled ? "yes" : "no"}`);
     if (scheduledNext.length) {
       lines.push(`Next reminders: ${scheduledNext.join(" | ")}`);
+    }
+    if (scheduleSnapshot) {
+      lines.push(`Schedule health: ${scheduleSnapshot.health}`);
+      lines.push(`Schedule source: ${scheduleSnapshot.triggerSource}`);
+      lines.push(`Schedule plan: ${scheduleSnapshot.planId} revision=${scheduleSnapshot.revision}`);
+      lines.push(`Schedule computed: ${scheduleSnapshot.computedAt}`);
+      lines.push(`Schedule verified: ${scheduleSnapshot.verifiedAt}`);
+      lines.push(`Schedule counts: desired=${scheduleSnapshot.desiredCount} scheduled=${scheduleSnapshot.scheduledCount} verifiedFamilies=${scheduleSnapshot.verifiedFamilyIds.length}`);
+      if (scheduleSnapshot.errors.length) {
+        lines.push(`Schedule errors: ${scheduleSnapshot.errors.join(" | ")}`);
+      }
+    } else {
+      lines.push("Schedule snapshot: unavailable");
+    }
+    if (diagnosticReadError) {
+      lines.push(`Diagnostics read error: ${diagnosticReadError}`);
     }
     if (diagnostics?.lastSchedule) {
       lines.push(`Last reschedule: ${diagnostics.lastSchedule.at}`);
@@ -206,6 +332,8 @@ export default function SettingsScreen() {
       channels.forEach((channel) => {
         lines.push(`- ${channel.id} | importance=${channel.importance} | sound=${channel.sound ?? "none"} | vibrate=${channel.enableVibrate ? "yes" : "no"}`);
       });
+    } else if (Platform.OS === "android") {
+      lines.push("Android channels: none or unavailable");
     }
     return lines.join("\n");
   };
@@ -226,9 +354,12 @@ export default function SettingsScreen() {
   };
 
   useEffect(() => {
-    if (ENABLE_DIAGNOSTICS) {
+    if (showNotificationDiagnostics) {
       void refreshDiagnostics();
     }
+  }, [showNotificationDiagnostics]);
+
+  useEffect(() => {
     const checkBackupStatus = async () => {
       try {
         const lastExportStr = await getJson<string>(STORAGE_KEYS.lastExportAt);
@@ -537,19 +668,15 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Actions</Text>
           <View style={styles.actionGroup}>
             <Button
-              label="Reschedule notifications"
-              onPress={() => void reconcile({
-                settings,
-                consumedMl: progress.consumedMl,
-                lastLogAt: quickLog.lastLogAt,
-                history,
-                source: "manual_repair",
-              })}
+              label={notificationAction === "reschedule" ? "Rescheduling..." : "Reschedule notifications"}
+              onPress={handleManualReschedule}
+              disabled={notificationAction !== null}
             />
             <Button
-              label="Test notification (sound)"
+              label={notificationAction === "test" ? "Scheduling test..." : "Test notification (sound)"}
               variant="secondary"
-              onPress={() => void sendTestNotification()}
+              onPress={handleTestNotification}
+              disabled={notificationAction !== null}
             />
             <Button
               label="Reset today's progress"
@@ -557,9 +684,14 @@ export default function SettingsScreen() {
               onPress={() => void resetToday()}
             />
           </View>
+          {notificationActionStatus ? (
+            <Text style={[styles.helper, { color: theme.colors.textSecondary }]}>
+              {notificationActionStatus}
+            </Text>
+          ) : null}
         </AnimatedCard>
 
-        {ENABLE_DIAGNOSTICS ? (
+        {showNotificationDiagnostics ? (
           <AnimatedCard style={styles.section} delay={300}>
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
               Notification diagnostics
@@ -584,12 +716,50 @@ export default function SettingsScreen() {
                 <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>{scheduledCount}</Text>
               </View>
               <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>Schedule health</Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {scheduleSnapshot?.health ?? "unavailable"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>Desired / verified</Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {scheduleSnapshot ? `${scheduleSnapshot.desiredCount} / ${scheduleSnapshot.scheduledCount}` : "unavailable"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
+                <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>Trigger source</Text>
+                <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>
+                  {scheduleSnapshot?.triggerSource ?? "unavailable"}
+                </Text>
+              </View>
+              <View style={styles.diagnosticRow}>
                 <Text style={[styles.diagnosticLabel, { color: theme.colors.textSecondary }]}>Next reminders</Text>
                 <Text style={[styles.diagnosticValue, { color: theme.colors.textPrimary }]}>{scheduledNext.length ? scheduledNext.join(" | ") : "none"}</Text>
               </View>
             </View>
+            {scheduleSnapshot?.errors.length ? (
+              <Text selectable style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                Schedule errors: {scheduleSnapshot.errors.join(" | ")}
+              </Text>
+            ) : null}
+            {diagnostics?.lastTest ? (
+              <Text selectable style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                Last test: {diagnostics.lastTest.success ? "success" : `failed — ${diagnostics.lastTest.error ?? "unknown error"}`}
+              </Text>
+            ) : null}
+            {diagnosticReadError ? (
+              <Text selectable style={[styles.diagnosticDetail, { color: theme.colors.textSecondary }]}>
+                Diagnostics read error: {diagnosticReadError}
+              </Text>
+            ) : null}
             <View style={styles.diagnosticActions}>
-              <Button label={diagnosticLoading ? "Refreshing..." : "Refresh diagnostics"} variant="secondary" onPress={refreshDiagnostics} />
+              <Button
+                label={diagnosticLoading ? "Refreshing..." : "Refresh diagnostics"}
+                variant="secondary"
+                onPress={() => void Promise.all([refreshDiagnostics(), refreshScheduleSnapshot()])}
+                disabled={diagnosticLoading}
+              />
               <Button label={exporting ? "Exporting..." : "Export diagnostics"} variant="secondary" onPress={handleExportDiagnostics} />
               <Button label="Clear diagnostics" variant="secondary" onPress={async () => {
                 await clearNotificationDiagnostics();

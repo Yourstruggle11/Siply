@@ -33,7 +33,12 @@ vi.mock("../notifications/scheduleEngine", () => ({
 }));
 
 vi.mock("../notifications/notifier", () => ({
-  parseSiplyNotificationId: (id: string) => ({ ml: Number(id.split(":")[3]) }),
+  parseSiplyNotificationId: (id: string) => ({
+    ml: Number(id.split(":")[4]),
+    familyId: `siply-family-${id.split(":")[3]}`,
+  }),
+  resolveNotificationFamilyId: (id: string, data?: Record<string, unknown>) =>
+    data?.familyId ?? `siply-family-${id.split(":")[3]}`,
   snoozeNotification: mockSnooze,
 }));
 
@@ -44,16 +49,16 @@ import {
 } from "../../../core/constants";
 import { handleBackgroundNotificationAction } from "../notifications/notificationActionTask";
 
-const response = (actionIdentifier: string) => ({
+const response = (actionIdentifier: string, includeData = true) => ({
   actionIdentifier,
   notification: {
     date: Date.now(),
     request: {
-      identifier: "siply:reminder:1789977600000:240",
+      identifier: "siply:v2:reminder:1789977600000:240",
       content: {
         title: "Siply",
         body: "Drink 240 ml",
-        data: { familyId: "family-1" },
+        ...(includeData ? { data: { familyId: "family-1" } } : {}),
       },
       trigger: null,
     },
@@ -81,6 +86,17 @@ describe("background notification actions", () => {
     await handleBackgroundNotificationAction(response(NOTIFICATION_ACTION_SNOOZE) as any);
     expect(mockMarkHandled).toHaveBeenCalledWith("family-1", "snoozed");
     expect(mockSnooze).toHaveBeenCalledWith(240, settings);
+  });
+
+  it("handles Android actions when local notification data is omitted", async () => {
+    await handleBackgroundNotificationAction(
+      response(NOTIFICATION_ACTION_SKIP, false) as any
+    );
+
+    expect(mockMarkHandled).toHaveBeenCalledWith(
+      "siply-family-1789977600000",
+      "skipped"
+    );
   });
 
   it("deduplicates action delivery across background and foreground handlers", async () => {

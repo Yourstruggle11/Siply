@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Platform } from "react-native";
 
-const { pending, events, mockSchedule } = vi.hoisted(() => ({
+const { pending, events, mockSchedule, mockPermissions, mockRequestPermissions } = vi.hoisted(() => ({
   pending: [] as Array<{ identifier: string; content: any; trigger: any }>,
   events: [] as string[],
   mockSchedule: vi.fn(),
+  mockPermissions: vi.fn(),
+  mockRequestPermissions: vi.fn(),
 }));
 
 vi.mock("expo-notifications", () => ({
@@ -12,6 +15,8 @@ vi.mock("expo-notifications", () => ({
   AndroidImportance: { HIGH: 4, LOW: 2 },
   AndroidNotificationVisibility: { PUBLIC: 1 },
   getAllScheduledNotificationsAsync: vi.fn(async () => [...pending]),
+  getPermissionsAsync: mockPermissions,
+  requestPermissionsAsync: mockRequestPermissions,
   scheduleNotificationAsync: mockSchedule,
   cancelScheduledNotificationAsync: vi.fn(async (identifier: string) => {
     events.push(`cancel:${identifier}`);
@@ -24,13 +29,17 @@ vi.mock("expo-notifications", () => ({
 }));
 
 vi.mock("../notifications/diagnostics", () => ({
-  recordTestDiagnostics: vi.fn(),
+  recordTestDiagnostics: vi.fn(async () => {}),
 }));
 
 import { DEFAULT_SETTINGS } from "../../../core/constants";
 import {
   applyNotificationPlan,
   buildReminderFamilyId,
+  cancelNotificationFamily,
+  resolveNotificationFamilyId,
+  sendTestNotification,
+  sendTestNotificationDetailed,
   type NotificationPlanSlot,
 } from "../notifications/notifier";
 
@@ -46,8 +55,11 @@ const makeSlot = (time: Date): NotificationPlanSlot => ({
 
 describe("notification plan reconciliation", () => {
   beforeEach(() => {
+    (Platform as any).OS = "ios";
     pending.splice(0);
     events.splice(0);
+    mockPermissions.mockReset().mockResolvedValue({ granted: true, canAskAgain: true });
+    mockRequestPermissions.mockReset().mockResolvedValue({ granted: true, canAskAgain: true });
     mockSchedule.mockReset().mockImplementation(async (request: any) => {
       events.push(`schedule:${request.identifier}`);
       pending.push({
@@ -146,5 +158,55 @@ describe("notification plan reconciliation", () => {
     );
     expect(result.desiredCount).toBe(1);
     expect(pending).toHaveLength(48);
+  });
+
+  it("keeps Android action metadata in the identifier instead of content data", async () => {
+    (Platform as any).OS = "android";
+    const slot = makeSlot(new Date(2026, 8, 21, 10, 0));
+
+    await applyNotificationPlan(DEFAULT_SETTINGS, [slot], new Date(2026, 8, 21, 8, 0));
+
+    const reminder = pending.find((item) => item.identifier.includes(":reminder:"));
+    expect(reminder?.content).not.toHaveProperty("data");
+    expect(resolveNotificationFamilyId(reminder?.identifier, reminder?.content.data)).toBe(
+      slot.familyId
+    );
+
+    await cancelNotificationFamily(slot.familyId);
+    expect(
+      pending.some(
+        (item) => resolveNotificationFamilyId(item.identifier, item.content.data) === slot.familyId
+      )
+    ).toBe(false);
+  });
+
+  it("reports why a test notification cannot be added to a full queue", async () => {
+    for (let index = 0; index < 48; index += 1) {
+      pending.push({ identifier: `existing-${index}`, content: {}, trigger: {} });
+    }
+
+    const result = await sendTestNotificationDetailed();
+
+    expect(result).toMatchObject({
+      success: false,
+      reason: "queue_full",
+      pendingCount: 48,
+    });
+    expect(result.error).toContain("48/48");
+    expect(mockSchedule).not.toHaveBeenCalled();
+  });
+
+  it("preserves the boolean test API while exposing a native scheduling error", async () => {
+    mockSchedule.mockRejectedValue(new Error("native scheduler unavailable"));
+
+    const detailed = await sendTestNotificationDetailed();
+    const compatible = await sendTestNotification();
+
+    expect(detailed).toEqual({
+      success: false,
+      reason: "scheduling_failed",
+      error: "native scheduler unavailable",
+    });
+    expect(compatible).toBe(false);
   });
 });

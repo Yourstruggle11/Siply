@@ -18,6 +18,7 @@ import {
   configureNotificationActions,
   cancelNotificationFamily,
   parseSiplyNotificationId,
+  resolveNotificationFamilyId,
   snoozeNotification,
 } from "../src/features/hydration/notifications/notifier";
 import {
@@ -212,9 +213,13 @@ const RootLayoutNav = () => {
         return isNew;
       };
 
+      const familyId = resolveNotificationFamilyId(
+        notificationId,
+        response.notification.request.content.data
+      );
+
       if (action === NOTIFICATION_ACTION_DISMISS) {
-        const familyId = response.notification.request.content.data?.familyId;
-        if (typeof familyId === "string") {
+        if (familyId) {
           await recordNotificationDiagnostic({
             type: "action",
             at: new Date().toISOString(),
@@ -227,8 +232,7 @@ const RootLayoutNav = () => {
 
       if (action === NOTIFICATION_ACTION_SKIP) {
         if (await claimNotification()) {
-          const familyId = response.notification.request.content.data?.familyId;
-          if (typeof familyId === "string") {
+          if (familyId) {
             await markReminderFamilyHandled(familyId, "skipped");
           }
         }
@@ -241,10 +245,9 @@ const RootLayoutNav = () => {
         }
         const meta = parseSiplyNotificationId(notificationId);
         const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
-        const familyId = response.notification.request.content.data?.familyId;
         if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
           await snoozeNotification(amount, settings);
-          if (typeof familyId === "string") {
+          if (familyId) {
             await markReminderFamilyHandled(familyId, "snoozed");
           }
         }
@@ -268,8 +271,7 @@ const RootLayoutNav = () => {
       const meta = parseSiplyNotificationId(notificationId);
       const amount = meta?.ml ?? parseMlFromBody(response.notification.request.content.body);
       if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
-        const familyId = response.notification.request.content.data?.familyId;
-        if (typeof familyId === "string") {
+        if (familyId) {
           await cancelNotificationFamily(familyId).catch(() => {});
         }
         await addConsumed(amount);

@@ -7,7 +7,11 @@ import {
 } from "../../../core/constants";
 import { readPersistedHydrationSnapshot } from "../state/hydrationStore";
 import { notificationActionDeduplicator } from "./actionDedup";
-import { parseSiplyNotificationId, snoozeNotification } from "./notifier";
+import {
+  parseSiplyNotificationId,
+  resolveNotificationFamilyId,
+  snoozeNotification,
+} from "./notifier";
 import { markReminderFamilyHandled } from "./scheduleEngine";
 
 export const BACKGROUND_NOTIFICATION_ACTION_TASK = "siply-notification-actions";
@@ -27,9 +31,12 @@ export const handleBackgroundNotificationAction = async (
     return;
   }
 
-  const familyId = notification.request.content.data?.familyId;
+  const familyId = resolveNotificationFamilyId(
+    notificationId,
+    notification.request.content.data
+  );
   if (actionIdentifier === NOTIFICATION_ACTION_SKIP) {
-    if (typeof familyId === "string") {
+    if (familyId) {
       await markReminderFamilyHandled(familyId, "skipped");
     }
     return;
@@ -39,7 +46,7 @@ export const handleBackgroundNotificationAction = async (
   const snapshot = await readPersistedHydrationSnapshot();
   if (!snapshot || typeof amount !== "number" || amount <= 0) return;
   await snoozeNotification(amount, snapshot.settings);
-  if (typeof familyId === "string") {
+  if (familyId) {
     await markReminderFamilyHandled(familyId, "snoozed");
   }
 };

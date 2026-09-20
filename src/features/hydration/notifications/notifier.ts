@@ -59,6 +59,14 @@ export type NotificationApplyResult = {
   errors: string[];
 };
 
+export type TestNotificationResult = {
+  success: boolean;
+  reason: "scheduled" | "permission_denied" | "queue_full" | "scheduling_failed";
+  error?: string;
+  pendingCount?: number;
+  identifier?: string;
+};
+
 type DesiredNotification = {
   identifier: string;
   familyId?: string;
@@ -100,7 +108,11 @@ const buildContent = (
   return {
     title: APP_NAME,
     body,
-    data,
+    // expo-notifications persists Android local notifications through Java
+    // serialization. On affected SDK 54 builds, even an empty data object is
+    // converted to org.json.JSONObject and makes that persistence fail. Siply's
+    // notification identifier carries the same action metadata on Android.
+    ...(Platform.OS !== "android" && Object.keys(data).length ? { data } : {}),
     ...(sound ? { sound } : {}),
     priority: soundEnabled
       ? Notifications.AndroidNotificationPriority.HIGH
@@ -143,6 +155,16 @@ export const parseSiplyNotificationId = (identifier?: string) => {
       ? `siply-family-${baseTime}`
       : undefined,
   };
+};
+
+export const resolveNotificationFamilyId = (
+  identifier?: string,
+  data?: Record<string, unknown> | null
+) => {
+  const storedFamilyId = data?.familyId;
+  return typeof storedFamilyId === "string"
+    ? storedFamilyId
+    : parseSiplyNotificationId(identifier)?.familyId;
 };
 
 export const configureNotificationChannels = async () => {
@@ -313,8 +335,8 @@ const scheduleWithRetry = async (request: Notifications.NotificationRequestInput
 
 const extractPendingFamilyIds = (requests: Notifications.NotificationRequest[]) =>
   Array.from(new Set(requests.flatMap((item) => {
-    const familyId = item.content.data?.familyId;
-    return typeof familyId === "string" ? [familyId] : [];
+    const familyId = resolveNotificationFamilyId(item.identifier, item.content.data);
+    return familyId ? [familyId] : [];
   })));
 
 /** Differential, add-before-remove reconciliation against the real OS queue. */
@@ -427,36 +449,64 @@ export const applyNotificationPlan = async (
 
 export const cancelNotificationFamily = async (familyId: string) => {
   const pending = await Notifications.getAllScheduledNotificationsAsync();
-  const family = pending.filter((item) => item.content.data?.familyId === familyId);
+  const family = pending.filter(
+    (item) => resolveNotificationFamilyId(item.identifier, item.content.data) === familyId
+  );
   await Promise.all(family.map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier)));
 };
 
-export const sendTestNotification = async () => {
+export const sendTestNotificationDetailed = async (): Promise<TestNotificationResult> => {
   try {
     const permissions = await Notifications.getPermissionsAsync();
     if (!permissions.granted) {
-      if (!permissions.canAskAgain || !(await Notifications.requestPermissionsAsync()).granted) return false;
+      const granted = permissions.canAskAgain
+        ? (await Notifications.requestPermissionsAsync()).granted
+        : false;
+      if (!granted) {
+        const error = "Notification permission is not granted.";
+        await recordTestDiagnostics({ at: new Date().toISOString(), success: false, error }).catch(() => {});
+        return { success: false, reason: "permission_denied", error };
+      }
     }
     await ensureNotificationChannels();
     const pending = await Notifications.getAllScheduledNotificationsAsync();
-    if (pending.length >= MAX_NOTIFICATIONS_PER_DAY) return false;
+    if (pending.length >= MAX_NOTIFICATIONS_PER_DAY) {
+      const error = `Notification queue is at Siply's safety limit (${pending.length}/${MAX_NOTIFICATIONS_PER_DAY}).`;
+      await recordTestDiagnostics({ at: new Date().toISOString(), success: false, error }).catch(() => {});
+      return {
+        success: false,
+        reason: "queue_full",
+        error,
+        pendingCount: pending.length,
+      };
+    }
     const triggerDate = new Date(Date.now() + 1000);
+    const identifier = buildId("test", triggerDate);
     await Notifications.scheduleNotificationAsync({
-      identifier: buildId("test", triggerDate),
+      identifier,
       content: buildContent("Test reminder: Drink 200 ml (13 sips)", true),
       trigger: buildTrigger(triggerDate, getChannelId(true)),
     });
     await recordTestDiagnostics({ at: new Date().toISOString(), success: true }).catch(() => {});
-    return true;
+    return {
+      success: true,
+      reason: "scheduled",
+      pendingCount: pending.length + 1,
+      identifier,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     await recordTestDiagnostics({
       at: new Date().toISOString(),
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
     }).catch(() => {});
-    return false;
+    return { success: false, reason: "scheduling_failed", error: message };
   }
 };
+
+export const sendTestNotification = async () =>
+  (await sendTestNotificationDetailed()).success;
 
 export const snoozeNotification = async (
   mlPerReminder: number,
